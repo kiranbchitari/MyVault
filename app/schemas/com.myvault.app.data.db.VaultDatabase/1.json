@@ -1,0 +1,102 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "20806e7b1d34339ef924b9b1efb14288",
+    "entities": [
+      {
+        "tableName": "vault_metadata",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `vault_id` BLOB NOT NULL, `format_version` INTEGER NOT NULL, `key_generation` INTEGER NOT NULL, `passphrase_slot` BLOB NOT NULL, `biometric_slot` BLOB, `created_at` INTEGER NOT NULL, `passphrase_changed_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vaultId",
+            "columnName": "vault_id",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "format_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyGeneration",
+            "columnName": "key_generation",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "passphraseSlot",
+            "columnName": "passphrase_slot",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "biometricSlot",
+            "columnName": "biometric_slot",
+            "affinity": "BLOB"
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "passphraseChangedAtEpochMs",
+            "columnName": "passphrase_changed_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "security_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `auto_lock_timeout_seconds` INTEGER NOT NULL, `clipboard_clear_seconds` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoLockTimeoutSeconds",
+            "columnName": "auto_lock_timeout_seconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clipboardClearSeconds",
+            "columnName": "clipboard_clear_seconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '20806e7b1d34339ef924b9b1efb14288')"
+    ]
+  }
+}
