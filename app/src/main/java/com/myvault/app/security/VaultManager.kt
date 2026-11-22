@@ -80,7 +80,7 @@ class VaultManager @Inject constructor(
                 keyslot.open(passphrase, slot, vaultId).use { check(it.contentEquals(masterKey)) }
                 val now = clock.millis()
                 // Unlock first so observers go straight from NO_VAULT to UNLOCKED.
-                session.open(masterKey.copy())
+                session.open(masterKey.copy(), VaultMetadata.INITIAL_KEY_GENERATION)
                 store.create(
                     VaultMetadata(
                         vaultId = vaultId,
@@ -104,7 +104,7 @@ class VaultManager @Inject constructor(
     suspend fun unlock(passphrase: CharArray): UnlockResult = withContext(kdfDispatcher) {
         mutex.withLock {
             val metadata = store.load() ?: return@withLock UnlockResult.NO_VAULT
-            openSlot(passphrase, metadata) { session.open(it) }
+            openSlot(passphrase, metadata) { session.open(it, metadata.keyGeneration) }
         }
     }
 
@@ -132,6 +132,12 @@ class VaultManager @Inject constructor(
                 }
             }
         }
+
+    /** Checks [passphrase] against the stored slot without changing the session. */
+    suspend fun verifyPassphrase(passphrase: CharArray): Boolean = withContext(kdfDispatcher) {
+        val metadata = store.load() ?: return@withContext false
+        openSlot(passphrase, metadata) { it.close() } == UnlockResult.SUCCESS
+    }
 
     fun lock() = session.lock()
 

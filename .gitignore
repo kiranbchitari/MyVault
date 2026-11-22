@@ -12,3 +12,6 @@ build/
 *.jks
 *.keystore
 keystore.properties
+
+# Built APKs handed out for installing
+/dist/

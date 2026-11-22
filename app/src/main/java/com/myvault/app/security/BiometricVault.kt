@@ -102,11 +102,28 @@ class BiometricVault @Inject constructor(
                 masterKey.fill(0)
                 return@withContext false
             }
-            session.open(SecretBytes.wrap(masterKey))
+            session.open(SecretBytes.wrap(masterKey), metadata.keyGeneration)
             true
         } catch (_: GeneralSecurityException) {
             false
         } catch (_: VaultCryptoException) {
+            false
+        }
+    }
+
+    /**
+     * Confirms the user's identity with an authenticated [cipher] without replacing the session:
+     * the key it unwraps must be the one already in use.
+     */
+    suspend fun verify(cipher: Cipher): Boolean = withContext(io) {
+        val metadata = store.load() ?: return@withContext false
+        val stored = metadata.biometricSlot ?: return@withContext false
+        try {
+            cipher.updateAAD(BiometricSlot.associatedData(metadata.vaultId))
+            SecretBytes.wrap(cipher.doFinal(BiometricSlot.decode(stored).ciphertext)).use { unwrapped ->
+                session.withMasterKey { it.contentEquals(unwrapped) }
+            }
+        } catch (_: Exception) {
             false
         }
     }

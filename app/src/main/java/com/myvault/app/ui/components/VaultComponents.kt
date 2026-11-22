@@ -3,10 +3,13 @@ package com.myvault.app.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -24,18 +28,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,20 +48,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.myvault.app.ui.theme.VaultTheme
 import com.myvault.crypto.PassphraseStrength
 
-/** Full-screen gradient backdrop with a soft accent glow near the top. */
+/** Full-screen grouped background with a faint cool tint at the top. */
 @Composable
 fun VaultBackground(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val palette = VaultTheme.palette
@@ -69,19 +79,46 @@ fun VaultBackground(modifier: Modifier = Modifier, content: @Composable () -> Un
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(palette.glow, Color.Transparent),
-                        center = Offset(size.width / 2f, size.height * 0.16f),
-                        radius = size.width * 0.75f,
+                        center = Offset(size.width / 2f, 0f),
+                        radius = size.width * 0.9f,
                     ),
-                    radius = size.width * 0.75f,
-                    center = Offset(size.width / 2f, size.height * 0.16f),
+                    radius = size.width * 0.9f,
+                    center = Offset(size.width / 2f, 0f),
                 )
             },
     ) { content() }
 }
 
 /**
- * Standard screen layout: optional back button, scrolling content, and actions pinned to the
- * bottom above the keyboard. Content is capped in width so it stays readable on tablets.
+ * The card every grouped surface is built from: white (or elevated grey in dark mode), softly
+ * shadowed in light mode, with continuous-looking rounded corners.
+ */
+@Composable
+fun VaultSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(20.dp),
+    onClick: (() -> Unit)? = null,
+    color: Color = VaultTheme.palette.card,
+    elevation: Dp = 10.dp,
+    content: @Composable () -> Unit,
+) {
+    val palette = VaultTheme.palette
+    val shadowed = if (palette.isDark) {
+        modifier
+    } else {
+        modifier.shadow(elevation, shape, clip = false, ambientColor = palette.cardShadow, spotColor = palette.cardShadow)
+    }
+    val border = if (palette.isDark) BorderStroke(0.5.dp, palette.cardBorder) else null
+    if (onClick != null) {
+        Surface(onClick = onClick, modifier = shadowed, shape = shape, color = color, border = border, content = content)
+    } else {
+        Surface(modifier = shadowed, shape = shape, color = color, border = border, content = content)
+    }
+}
+
+/**
+ * Standard screen layout before the vault unlocks: optional back button, scrolling content, and
+ * actions pinned to the bottom above the keyboard. Content is capped in width for tablets.
  */
 @Composable
 fun VaultScreen(
@@ -93,10 +130,10 @@ fun VaultScreen(
     VaultBackground(modifier) {
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.TopCenter) {
             Column(Modifier.widthIn(max = 520.dp).fillMaxSize()) {
-                Box(Modifier.height(56.dp).padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.height(52.dp).padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
-                            Icon(VaultIcons.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
+                            Icon(VaultIcons.ArrowBack, contentDescription = "Back", tint = VaultTheme.palette.accent, modifier = Modifier.size(30.dp))
                         }
                     }
                 }
@@ -114,6 +151,7 @@ fun VaultScreen(
     }
 }
 
+/** The filled blue action button. */
 @Composable
 fun PrimaryButton(
     text: String,
@@ -121,42 +159,66 @@ fun PrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     loading: Boolean = false,
+    icon: ImageVector? = null,
 ) {
-    Button(
-        onClick = onClick,
-        enabled = enabled && !loading,
-        modifier = modifier.fillMaxWidth().heightIn(min = 56.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = ButtonDefaults.buttonColors(
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        ),
+    val palette = VaultTheme.palette
+    val active = enabled && !loading
+    val shape = RoundedCornerShape(16.dp)
+    val content = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 54.dp)
+            .then(if (active && !palette.isDark) Modifier.shadow(12.dp, shape, ambientColor = Color(0x551F7AFF), spotColor = Color(0x551F7AFF)) else Modifier)
+            .clip(shape)
+            .background(if (active) palette.accentBrush else SolidColor(palette.fill))
+            .clickable(
+                enabled = active,
+                role = Role.Button,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(color = Color.White),
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        if (loading) {
-            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.size(12.dp))
+        CompositionLocalProvider(LocalContentColor provides content) {
+            Row(Modifier.padding(PaddingValues(horizontal = 20.dp, vertical = 14.dp)), verticalAlignment = Alignment.CenterVertically) {
+                if (loading) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = content)
+                    Spacer(Modifier.width(10.dp))
+                } else if (icon != null) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(text, style = MaterialTheme.typography.labelLarge, color = content)
+            }
         }
-        Text(text, style = MaterialTheme.typography.labelLarge)
     }
 }
 
+/** A text-only action in the accent colour. */
 @Composable
 fun QuietButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    TextButton(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (enabled) VaultTheme.palette.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
 @Composable
-fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val palette = VaultTheme.palette
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = palette.card,
-        border = BorderStroke(1.dp, palette.cardBorder),
-    ) {
-        Column(Modifier.padding(20.dp), content = content)
+fun VaultCard(modifier: Modifier = Modifier, contentPadding: Dp = 18.dp, content: @Composable ColumnScope.() -> Unit) {
+    VaultSurface(modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(contentPadding), content = content)
     }
 }
 
@@ -174,12 +236,18 @@ fun PassphraseField(
     errorText: String? = null,
     imeAction: ImeAction = ImeAction.Done,
     onImeAction: () -> Unit = {},
+    testTag: String = "passphrase",
 ) {
     var revealed by remember { mutableStateOf(false) }
+    val userActivity = LocalUserActivity.current
+    val palette = VaultTheme.palette
     OutlinedTextField(
         value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth().testTag("passphrase"),
+        onValueChange = {
+            userActivity()
+            onValueChange(it)
+        },
+        modifier = modifier.fillMaxWidth().testTag(testTag),
         enabled = enabled,
         label = { Text(label) },
         singleLine = true,
@@ -201,12 +269,16 @@ fun PassphraseField(
                 )
             }
         },
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = VaultTheme.palette.accent,
-            focusedLabelColor = VaultTheme.palette.accent,
-            cursorColor = VaultTheme.palette.accent,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            focusedContainerColor = palette.card,
+            unfocusedContainerColor = palette.card,
+            disabledContainerColor = palette.card,
+            errorContainerColor = palette.card,
+            focusedBorderColor = palette.accent,
+            focusedLabelColor = palette.accent,
+            cursorColor = palette.accent,
+            unfocusedBorderColor = palette.cardBorder,
         ),
     )
 }
@@ -224,9 +296,9 @@ fun StrengthMeter(assessment: PassphraseStrength.Assessment, modifier: Modifier 
     Column(modifier.fillMaxWidth()) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(4) { index ->
-                val target = if (index < filled) colour else MaterialTheme.colorScheme.outlineVariant
+                val target = if (index < filled) colour else palette.fill
                 val animated by animateColorAsState(target, label = "strength")
-                Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(animated))
+                Box(Modifier.weight(1f).height(5.dp).clip(RoundedCornerShape(3.dp)).background(animated))
             }
         }
         Spacer(Modifier.height(8.dp))

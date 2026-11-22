@@ -16,7 +16,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.myvault.app.security.BiometricAvailability
 import com.myvault.app.ui.home.BiometricSetupContent
 import com.myvault.app.ui.home.SecurityUiState
-import com.myvault.app.ui.home.VaultStatusContent
 import com.myvault.app.ui.onboarding.ConfirmPassphraseScreen
 import com.myvault.app.ui.onboarding.CreatePassphraseScreen
 import com.myvault.app.ui.onboarding.OnboardingUiState
@@ -61,15 +60,6 @@ class ScreenRenderingTest {
         },
         Screen("unlock-error", "Incorrect passphrase. Please try again.") {
             UnlockContent(UnlockUiState(error = "Incorrect passphrase. Please try again."), onUnlock = {}, onUseBiometrics = {})
-        },
-        Screen("vault-status", "Vault unlocked") {
-            VaultStatusContent(
-                uiState = SecurityUiState(biometricEnrolled = true, biometricAvailability = BiometricAvailability.AVAILABLE, autoLockSeconds = 120),
-                canToggleBiometrics = true,
-                onBiometricsToggled = {},
-                onAutoLockSelected = {},
-                onLock = {},
-            )
         },
     )
 

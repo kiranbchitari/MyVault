@@ -30,4 +30,13 @@ class RootViewModel @Inject constructor(vaultManager: VaultManager) : ViewModel(
     fun biometricOfferHandled() {
         biometricOffer.value = false
     }
+
+    private val restoreAfterSetup = MutableStateFlow(false)
+
+    /** Set when the user chose "Restore from a backup" on the welcome screen. */
+    val restorePending: StateFlow<Boolean> = restoreAfterSetup.asStateFlow()
+
+    fun restoreAfterSetup(pending: Boolean) {
+        restoreAfterSetup.value = pending
+    }
 }

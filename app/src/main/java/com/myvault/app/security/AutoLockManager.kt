@@ -35,12 +35,24 @@ class AutoLockManager @Inject constructor(
     private val timer = InactivityTimer(SystemClock::elapsedRealtime)
     private var started = false
 
+    @Volatile
+    private var externalFlowUntil = 0L
+
     fun start() {
         if (started) return
         started = true
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-            override fun onStop(owner: LifecycleOwner) = session.lock()
+            override fun onStop(owner: LifecycleOwner) {
+                // A system screen the user opened from MyVault (file picker, Google consent) is not
+                // "leaving the app". The inactivity timer and screen-off lock still apply meanwhile.
+                if (SystemClock.elapsedRealtime() < externalFlowUntil) return
+                session.lock()
+            }
+
+            override fun onStart(owner: LifecycleOwner) {
+                externalFlowUntil = 0
+            }
         })
 
         ContextCompat.registerReceiver(
@@ -64,6 +76,20 @@ class AutoLockManager @Inject constructor(
         }
     }
 
+    /**
+     * Call just before launching a system screen for a result. The vault then stays unlocked
+     * while that screen is in front, for at most [EXTERNAL_FLOW_GRACE_MS] or the auto-lock
+     * timeout, whichever comes first.
+     */
+    fun expectExternalFlow() {
+        timer.touch()
+        externalFlowUntil = SystemClock.elapsedRealtime() + EXTERNAL_FLOW_GRACE_MS
+    }
+
     /** Called for every touch or key event delivered to the activity. */
     fun onUserInteraction() = timer.touch()
+
+    private companion object {
+        const val EXTERNAL_FLOW_GRACE_MS = 3 * 60 * 1000L
+    }
 }

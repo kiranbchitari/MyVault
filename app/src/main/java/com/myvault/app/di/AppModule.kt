@@ -3,13 +3,17 @@ package com.myvault.app.di
 import android.content.Context
 import androidx.room.Room
 import com.myvault.app.data.RoomVaultMetadataStore
+import com.myvault.app.data.RoomVaultStorage
+import com.myvault.app.data.db.BackupMetadataDao
 import com.myvault.app.data.db.Migrations
 import com.myvault.app.data.db.SecuritySettingsDao
 import com.myvault.app.data.db.VaultDatabase
 import com.myvault.app.data.db.VaultMetadataDao
 import com.myvault.app.security.VaultMetadataStore
 import com.myvault.crypto.Argon2Params
+import com.myvault.app.vault.VaultStorage
 import com.myvault.crypto.PassphraseKeyslot
+import com.myvault.crypto.PasswordGenerator
 import com.myvault.crypto.VaultCipher
 import dagger.Binds
 import dagger.Module
@@ -63,6 +67,13 @@ object AppModule {
     fun securitySettingsDao(database: VaultDatabase): SecuritySettingsDao = database.securitySettingsDao()
 
     @Provides
+    fun backupMetadataDao(database: VaultDatabase): BackupMetadataDao = database.backupMetadataDao()
+
+    @Provides
+    @Singleton
+    fun passwordGenerator(random: SecureRandom): PasswordGenerator = PasswordGenerator(random)
+
+    @Provides
     @IoDispatcher
     fun ioDispatcher(): CoroutineDispatcher = Dispatchers.IO
 
@@ -81,4 +92,7 @@ object AppModule {
 abstract class StoreModule {
     @Binds
     abstract fun vaultMetadataStore(impl: RoomVaultMetadataStore): VaultMetadataStore
+
+    @Binds
+    abstract fun vaultStorage(impl: RoomVaultStorage): VaultStorage
 }

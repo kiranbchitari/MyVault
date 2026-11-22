@@ -20,7 +20,7 @@ import com.myvault.app.security.VaultState
 import com.myvault.app.ui.components.VaultBackground
 import com.myvault.app.ui.components.VaultLogo
 import com.myvault.app.ui.home.BiometricSetupScreen
-import com.myvault.app.ui.home.VaultStatusScreen
+import com.myvault.app.ui.main.MainApp
 import com.myvault.app.ui.onboarding.OnboardingFlow
 import com.myvault.app.ui.unlock.UnlockScreen
 
@@ -36,6 +36,7 @@ private enum class RootDestination(val showsVaultContent: Boolean) {
 fun MyVaultRoot(viewModel: RootViewModel = hiltViewModel()) {
     val vaultState by viewModel.vaultState.collectAsStateWithLifecycle()
     val biometricOfferPending by viewModel.biometricOfferPending.collectAsStateWithLifecycle()
+    val restorePending by viewModel.restorePending.collectAsStateWithLifecycle()
 
     val destination = when (vaultState) {
         null -> RootDestination.SPLASH
@@ -58,10 +59,13 @@ fun MyVaultRoot(viewModel: RootViewModel = hiltViewModel()) {
     ) { target ->
         when (target) {
             RootDestination.SPLASH -> SplashScreen()
-            RootDestination.ONBOARDING -> OnboardingFlow(onVaultCreationStarted = viewModel::offerBiometricsAfterSetup)
+            RootDestination.ONBOARDING -> OnboardingFlow(
+                onVaultCreationStarted = viewModel::offerBiometricsAfterSetup,
+                onRestoreChosen = viewModel::restoreAfterSetup,
+            )
             RootDestination.UNLOCK -> UnlockScreen()
             RootDestination.BIOMETRIC_SETUP -> BiometricSetupScreen(onDone = viewModel::biometricOfferHandled)
-            RootDestination.HOME -> VaultStatusScreen()
+            RootDestination.HOME -> MainApp(startAtRestore = restorePending, onStartHandled = { viewModel.restoreAfterSetup(false) })
         }
     }
 }

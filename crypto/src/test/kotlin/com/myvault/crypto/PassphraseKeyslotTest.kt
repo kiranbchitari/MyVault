@@ -101,3 +101,21 @@ class PassphraseKeyslotTest {
         assertTrue(keyslot.open(passphrase, slot, vaultId).contentEquals(vmk))
     }
 }
+
+class PassphraseKeyslotLabelTest {
+    private val random = SecureRandom()
+    private val cipher = VaultCipher(random)
+
+    @Test
+    fun `a backup slot cannot be opened as a vault slot`() {
+        val vault = PassphraseKeyslot(random, cipher)
+        val backup = PassphraseKeyslot(random, cipher, PassphraseKeyslot.BACKUP_LABEL)
+        val id = ByteArray(16)
+        val key = SecretBytes.random(32, random)
+        val passphrase = "tidal-orchid-lantern-42".toCharArray()
+        val slot = backup.create(passphrase, key, id, FAST_PARAMS)
+
+        assertTrue(backup.open(passphrase, slot, id).contentEquals(key))
+        assertThrows(AuthenticationFailedException::class.java) { vault.open(passphrase, slot, id) }
+    }
+}

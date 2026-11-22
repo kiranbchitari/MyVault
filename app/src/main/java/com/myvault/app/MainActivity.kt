@@ -7,7 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import com.myvault.app.security.AutoLockManager
+import androidx.compose.runtime.CompositionLocalProvider
 import com.myvault.app.ui.MyVaultRoot
+import com.myvault.app.ui.components.LocalExpectExternalFlow
+import com.myvault.app.ui.components.LocalUserActivity
 import com.myvault.app.ui.theme.MyVaultTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -29,7 +32,12 @@ class MainActivity : FragmentActivity() {
         }
         setContent {
             MyVaultTheme {
-                MyVaultRoot()
+                CompositionLocalProvider(
+                    LocalUserActivity provides autoLockManager::onUserInteraction,
+                    LocalExpectExternalFlow provides autoLockManager::expectExternalFlow,
+                ) {
+                    MyVaultRoot()
+                }
             }
         }
     }

@@ -25,6 +25,9 @@ class RoomVaultMetadataStore @Inject constructor(private val dao: VaultMetadataD
             biometricSlot = metadata.biometricSlot,
             createdAtEpochMs = metadata.createdAtEpochMs,
             passphraseChangedAtEpochMs = metadata.passphraseChangedAtEpochMs,
+            backupKeyId = metadata.backupKeyId,
+            backupPassphraseSlot = metadata.backupPassphraseSlot,
+            backupKeyWrapped = metadata.backupKeyWrapped,
         ),
     )
 
@@ -36,6 +39,14 @@ class RoomVaultMetadataStore @Inject constructor(private val dao: VaultMetadataD
         dao.updateBiometricSlot(slot)
     }
 
+    override suspend fun updateBackupKey(keyId: ByteArray, passphraseSlot: ByteArray, wrappedKey: ByteArray) {
+        check(dao.updateBackupKey(keyId, passphraseSlot, wrappedKey) == 1) { "No vault to update" }
+    }
+
+    override suspend fun applyRotation(passphraseSlot: ByteArray, keyGeneration: Int, backupKeyWrapped: ByteArray?, changedAtEpochMs: Long) {
+        check(dao.applyRotation(passphraseSlot, keyGeneration, backupKeyWrapped, changedAtEpochMs) == 1) { "No vault to update" }
+    }
+
     private fun VaultMetadataEntity.toModel() = VaultMetadata(
         vaultId = vaultId,
         formatVersion = formatVersion,
@@ -44,5 +55,8 @@ class RoomVaultMetadataStore @Inject constructor(private val dao: VaultMetadataD
         biometricSlot = biometricSlot,
         createdAtEpochMs = createdAtEpochMs,
         passphraseChangedAtEpochMs = passphraseChangedAtEpochMs,
+        backupKeyId = backupKeyId,
+        backupPassphraseSlot = backupPassphraseSlot,
+        backupKeyWrapped = backupKeyWrapped,
     )
 }

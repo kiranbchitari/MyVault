@@ -23,7 +23,13 @@ import java.security.SecureRandom
  * stored; the passphrase and the derived key exist in memory only while a slot is being
  * created or opened.
  */
-class PassphraseKeyslot(private val random: SecureRandom, private val cipher: VaultCipher) {
+class PassphraseKeyslot(
+    private val random: SecureRandom,
+    private val cipher: VaultCipher,
+    /** Domain-separation label: a slot made for one purpose cannot be opened as another. */
+    label: String = VAULT_LABEL,
+) {
+    private val contextLabel = label.toByteArray(Charsets.US_ASCII)
 
     fun create(
         passphrase: CharArray,
@@ -95,7 +101,7 @@ class PassphraseKeyslot(private val random: SecureRandom, private val cipher: Va
         )
     }
 
-    private fun context(vaultId: ByteArray, header: ByteArray): ByteArray = CONTEXT_LABEL + vaultId + header
+    private fun context(vaultId: ByteArray, header: ByteArray): ByteArray = contextLabel + vaultId + header
 
     companion object {
         const val SLOT_VERSION: Byte = 1
@@ -103,6 +109,7 @@ class PassphraseKeyslot(private val random: SecureRandom, private val cipher: Va
         const val SALT_BYTES = 32
         private const val FIXED_HEADER_BYTES = 15
         private const val KEK_GENERATION = 0
-        private val CONTEXT_LABEL = "MyVault/keyslot/passphrase/v1".toByteArray(Charsets.US_ASCII)
+        const val VAULT_LABEL = "MyVault/keyslot/passphrase/v1"
+        const val BACKUP_LABEL = "MyVault/keyslot/backup/v1"
     }
 }

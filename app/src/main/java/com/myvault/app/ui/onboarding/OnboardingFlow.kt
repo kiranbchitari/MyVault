@@ -23,7 +23,11 @@ private object Routes {
 
 /** First-run flow: Welcome, Create passphrase, Confirm passphrase, Security setup. */
 @Composable
-fun OnboardingFlow(onVaultCreationStarted: () -> Unit, viewModel: OnboardingViewModel = hiltViewModel()) {
+fun OnboardingFlow(
+    onVaultCreationStarted: () -> Unit,
+    onRestoreChosen: (Boolean) -> Unit = {},
+    viewModel: OnboardingViewModel = hiltViewModel(),
+) {
     val navController = rememberNavController()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -39,7 +43,16 @@ fun OnboardingFlow(onVaultCreationStarted: () -> Unit, viewModel: OnboardingView
         popExitTransition = { slideOutHorizontally(tween(200)) { it / 8 } + fadeOut(tween(140)) },
     ) {
         composable(Routes.WELCOME) {
-            WelcomeScreen(onStart = { navController.navigate(Routes.CREATE) })
+            WelcomeScreen(
+                onStart = {
+                    onRestoreChosen(false)
+                    navController.navigate(Routes.CREATE)
+                },
+                onRestore = {
+                    onRestoreChosen(true)
+                    navController.navigate(Routes.CREATE)
+                },
+            )
         }
         composable(Routes.CREATE) {
             CreatePassphraseScreen(

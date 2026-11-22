@@ -28,6 +28,27 @@ class FakeVaultMetadataStore : VaultMetadataStore {
         current.value = current.value!!.copy(biometricSlot = slot, clearBiometric = slot == null)
     }
 
+    override suspend fun updateBackupKey(keyId: ByteArray, passphraseSlot: ByteArray, wrappedKey: ByteArray) {
+        current.value = current.value!!.copy(backupKeyId = keyId, backupPassphraseSlot = passphraseSlot, backupKeyWrapped = wrappedKey)
+    }
+
+    override suspend fun applyRotation(passphraseSlot: ByteArray, keyGeneration: Int, backupKeyWrapped: ByteArray?, changedAtEpochMs: Long) {
+        if (failNextRotation) {
+            failNextRotation = false
+            throw IllegalStateException("disk full")
+        }
+        current.value = current.value!!.copy(
+            passphraseSlot = passphraseSlot,
+            keyGeneration = keyGeneration,
+            backupKeyWrapped = backupKeyWrapped,
+            clearBackupWrap = backupKeyWrapped == null,
+            clearBiometric = true,
+            passphraseChangedAtEpochMs = changedAtEpochMs,
+        )
+    }
+
+    var failNextRotation = false
+
     fun replace(transform: (VaultMetadata) -> VaultMetadata) {
         current.value = transform(current.value!!)
     }
@@ -35,10 +56,15 @@ class FakeVaultMetadataStore : VaultMetadataStore {
 
 fun VaultMetadata.copy(
     formatVersion: Int = this.formatVersion,
+    keyGeneration: Int = this.keyGeneration,
     passphraseSlot: ByteArray = this.passphraseSlot,
     biometricSlot: ByteArray? = this.biometricSlot,
     clearBiometric: Boolean = false,
     passphraseChangedAtEpochMs: Long = this.passphraseChangedAtEpochMs,
+    backupKeyId: ByteArray? = this.backupKeyId,
+    backupPassphraseSlot: ByteArray? = this.backupPassphraseSlot,
+    backupKeyWrapped: ByteArray? = this.backupKeyWrapped,
+    clearBackupWrap: Boolean = false,
 ) = VaultMetadata(
     vaultId = vaultId,
     formatVersion = formatVersion,
@@ -47,6 +73,9 @@ fun VaultMetadata.copy(
     biometricSlot = if (clearBiometric) null else biometricSlot,
     createdAtEpochMs = createdAtEpochMs,
     passphraseChangedAtEpochMs = passphraseChangedAtEpochMs,
+    backupKeyId = backupKeyId,
+    backupPassphraseSlot = backupPassphraseSlot,
+    backupKeyWrapped = if (clearBackupWrap) null else backupKeyWrapped,
 )
 
 fun ByteArray.contains(needle: ByteArray): Boolean {

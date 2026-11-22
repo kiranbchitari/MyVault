@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
@@ -36,6 +37,7 @@ import com.myvault.app.ui.components.AutoLockChips
 import com.myvault.app.ui.components.ErrorText
 import com.myvault.app.ui.components.PassphraseField
 import com.myvault.app.ui.components.PrimaryButton
+import com.myvault.app.ui.components.QuietButton
 import com.myvault.app.ui.components.ScreenTitle
 import com.myvault.app.ui.components.StrengthMeter
 import com.myvault.app.ui.components.VaultCard
@@ -46,16 +48,17 @@ import com.myvault.app.ui.theme.VaultTheme
 import com.myvault.crypto.PassphraseStrength
 
 @Composable
-fun WelcomeScreen(onStart: () -> Unit) {
+fun WelcomeScreen(onStart: () -> Unit, onRestore: () -> Unit = {}) {
     VaultScreen(
         bottomBar = {
             PrimaryButton("Create my vault", onStart)
+            QuietButton("Restore from a backup", onRestore)
             Text(
                 "Works fully offline. No account needed.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
         },
     ) {
@@ -245,7 +248,7 @@ fun SecuritySetupScreen(
                 Checkbox(
                     checked = acknowledged,
                     onCheckedChange = null,
-                    colors = CheckboxDefaults.colors(checkedColor = VaultTheme.palette.accent, checkmarkColor = MaterialTheme.colorScheme.surface),
+                    colors = CheckboxDefaults.colors(checkedColor = VaultTheme.palette.accent, checkmarkColor = Color.White),
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(

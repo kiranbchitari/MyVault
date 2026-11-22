@@ -24,18 +24,21 @@ class AppSecurityConfigTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
-    fun appCannotReachTheNetwork() {
-        assertEquals(
-            PackageManager.PERMISSION_DENIED,
-            context.packageManager.checkPermission(Manifest.permission.INTERNET, context.packageName),
-        )
+    fun onlyTheExpectedPermissionsAreRequested() {
         val requested = context.packageManager
             .getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
-            .requestedPermissions.orEmpty()
+            .requestedPermissions.orEmpty().toSet()
+        // INTERNET exists solely for the optional Google Drive upload of already-encrypted backups.
+        assertTrue(Manifest.permission.INTERNET in requested)
         val unexpected = requested.filter { permission ->
-            listOf("INTERNET", "NETWORK", "WIFI", "STORAGE", "LOCATION", "CONTACTS", "CAMERA", "RECORD_AUDIO").any { it in permission }
+            listOf("STORAGE", "LOCATION", "CONTACTS", "CAMERA", "RECORD_AUDIO", "READ_PHONE", "SMS", "CALL_LOG", "BLUETOOTH", "MEDIA").any { it in permission }
         }
         assertTrue("Unexpected permissions: $unexpected", unexpected.isEmpty())
+    }
+
+    @Test
+    fun cleartextNetworkTrafficIsBlocked() {
+        assertFalse(android.security.NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted)
     }
 
     @Test
