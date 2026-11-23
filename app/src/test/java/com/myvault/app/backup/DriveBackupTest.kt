@@ -49,12 +49,64 @@ class DriveBackupTest {
     }
 
     @Test
-    fun `the backup folder is created once and then reused`() = runBlocking {
+    fun `backups go in a MyVault Backups folder at the top of My Drive, created once and then reused`() = runBlocking {
         val first = client.ensureFolder()
         val second = client.ensureFolder()
+
         assertEquals(first, second)
         assertEquals(1, drive.files.values.count { it.folder })
-        assertEquals(DriveClient.FOLDER_NAME, drive.files.getValue(first).name)
+        val folder = drive.files.getValue(first)
+        assertEquals("MyVault Backups", folder.name)
+        assertNull("no parent folder is created", folder.parent)
+    }
+
+    @Test
+    fun `the folder is still found after the user moves it into a folder of their own`() = runBlocking {
+        val folder = client.ensureFolder()
+        drive.move(folder, parent = "users-own-folder")
+
+        assertEquals(folder, client.ensureFolder())
+        assertEquals(folder, client.findBackupFolder())
+        assertEquals(1, drive.files.values.count { it.folder })
+    }
+
+    @Test
+    fun `with two MyVault Backups folders the older one keeps being used`() = runBlocking {
+        val older = client.ensureFolder()
+        drive.files["newer"] = FakeDrive.Stored("newer", "MyVault Backups", null, true, ByteArray(0), Int.MAX_VALUE)
+
+        assertEquals(older, client.ensureFolder())
+    }
+
+    @Test
+    fun `looking for backups before the first upload creates nothing`() = runBlocking {
+        assertNull(client.findBackupFolder())
+        assertTrue(drive.files.isEmpty())
+
+        val folder = client.ensureFolder()
+        assertEquals(folder, client.findBackupFolder())
+    }
+
+    @Test
+    fun `every backup is listed newest first, across pages`() = runBlocking {
+        val folder = client.ensureFolder()
+        val names = (1..8).map { drive.seed(folder, "MyVault_Backup_$it.vault").name }
+        drive.maxPageSize = 3
+        drive.requests.clear()
+
+        val listed = client.list(folder).map { it.name }
+
+        assertEquals(names.reversed(), listed)
+        assertEquals("three pages of 3, 3 and 2", 3, drive.requests.size)
+    }
+
+    @Test
+    fun `a backup name with quotes and backslashes is sent intact`() = runBlocking {
+        val name = "My \"vault\" \\ backup.vault"
+        val uploaded = client.upload(client.ensureFolder(), name, archive(1_000))
+
+        assertEquals(name, drive.files.getValue(uploaded.id).name)
+        assertEquals(name, uploaded.name)
     }
 
     @Test

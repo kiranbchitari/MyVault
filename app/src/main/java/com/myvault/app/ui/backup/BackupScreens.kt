@@ -275,7 +275,7 @@ fun DriveConnectionScreen(onBack: () -> Unit, viewModel: BackupViewModel = hiltV
             Spacer(Modifier.height(8.dp))
             Text(
                 "• Backups are encrypted on this phone before upload. Google only ever receives an unreadable .vault file.\n" +
-                    "• MyVault asks for the narrowest Drive permission: it can see and manage only the files it created, in a folder named \"${com.myvault.app.backup.DriveClient.FOLDER_NAME}\". It cannot read anything else in your Drive.\n" +
+                    "• MyVault asks for the narrowest Drive permission: it can see and manage only the files it created, in a \"${com.myvault.app.backup.DriveClient.FOLDER_NAME}\" folder in My Drive. It cannot read anything else in your Drive.\n" +
                     "• Your Google password is never seen or stored by MyVault.\n" +
                     "• The newest ${com.myvault.app.backup.DriveUploader.KEEP_VERSIONS} backups are kept; older ones are removed.",
                 style = MaterialTheme.typography.bodyMedium,

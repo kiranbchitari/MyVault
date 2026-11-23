@@ -109,6 +109,12 @@ keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -sto
 No client ID or secret goes into the app. The device also needs Google Play services and a
 signed-in Google account.
 
+Backups go to a `MyVault Backups` folder at the top of My Drive. Let the app create it on the
+first backup: with the `drive.file` permission it can see only files and folders created by apps
+in its own Google Cloud project, so a hand-made "MyVault Backups" folder is invisible to it and
+a second one gets created. Moving the folder elsewhere in My Drive later is fine, including into
+a folder of your own; the app still finds it and keeps using it.
+
 ## Tests
 
 ```bash

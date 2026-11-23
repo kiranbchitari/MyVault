@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -25,6 +26,19 @@ class FakeDrive : AutoCloseable {
     /** Status codes to return for upcoming requests instead of handling them. */
     val failures = ArrayDeque<Int>()
     var corruptUploads = false
+
+    /** Caps a listing page below what the client asks for, to exercise paging. */
+    var maxPageSize = Int.MAX_VALUE
+
+    /** Puts a backup straight into [parent], as if it had been uploaded earlier. */
+    fun seed(parent: String, name: String): Stored =
+        Stored("file-${++counter}", name, parent, false, ByteArray(1), counter).also { files[it.id] = it }
+
+    /** Moves a file or folder into [parent], as the user can in the Drive app. */
+    fun move(id: String, parent: String) {
+        val old = files.getValue(id)
+        files[id] = Stored(old.id, old.name, parent, old.folder, old.bytes, old.created)
+    }
 
     private val sessions = HashMap<String, Pair<String, String?>>()
     private var counter = 0
@@ -67,20 +81,26 @@ class FakeDrive : AutoCloseable {
             }
             path == "/drive/v3/files" && exchange.requestMethod == "POST" -> {
                 val meta = Json.parseToJsonElement(String(body)).jsonObject
-                val folder = Stored("folder-${++counter}", meta.getValue("name").jsonPrimitive.content, null, true, ByteArray(0), counter)
+                val parent = meta["parents"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.content
+                val folder = Stored("folder-${++counter}", meta.getValue("name").jsonPrimitive.content, parent, true, ByteArray(0), counter)
                 files[folder.id] = folder
                 respond(exchange, 200, json(folder))
             }
             path == "/drive/v3/files" && exchange.requestMethod == "GET" -> {
                 val q = query["q"].orEmpty()
-                val matches = if (q.contains("application/vnd.google-apps.folder")) {
+                val parent = Regex("'([^']*)' in parents").find(q)?.groupValues?.get(1)
+                val matches = if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
                     val name = Regex("name = '([^']*)'").find(q)!!.groupValues[1]
-                    files.values.filter { it.folder && it.name == name }
+                    files.values.filter { it.folder && it.name == name && (parent == null || it.parent == parent) }.sortedBy { it.created }
                 } else {
-                    val parent = Regex("'([^']*)' in parents").find(q)!!.groupValues[1]
-                    files.values.filter { !it.folder && it.parent == parent }.sortedByDescending { it.created }
+                    files.values.filter { it.parent == parent }.sortedByDescending { it.created }
                 }
-                respond(exchange, 200, """{"files":[${matches.joinToString(",", transform = ::json)}]}""")
+                // Page tokens are offsets into the result.
+                val from = query["pageToken"]?.toInt() ?: 0
+                val size = minOf(query["pageSize"]?.toInt() ?: 100, maxPageSize)
+                val page = matches.drop(from).take(size)
+                val next = if (from + size < matches.size) ""","nextPageToken":"${from + size}"""" else ""
+                respond(exchange, 200, """{"files":[${page.joinToString(",", transform = ::json)}]$next}""")
             }
             path.startsWith("/drive/v3/files/") -> {
                 val file = files[path.removePrefix("/drive/v3/files/")] ?: return respond(exchange, 404, "{}")
@@ -103,7 +123,8 @@ class FakeDrive : AutoCloseable {
 
     private fun json(file: Stored): String {
         val md5 = MessageDigest.getInstance("MD5").digest(file.bytes).joinToString("") { "%02x".format(it) }
-        return """{"id":"${file.id}","name":"${file.name}","size":"${file.bytes.size}","createdTime":"2026-11-21T10:00:${"%02d".format(file.created)}Z","md5Checksum":"$md5","kind":"drive#file"}"""
+        val name = Json.encodeToString(String.serializer(), file.name)
+        return """{"id":"${file.id}","name":$name,"size":"${file.bytes.size}","createdTime":"2026-11-21T10:00:${"%02d".format(file.created)}Z","md5Checksum":"$md5","kind":"drive#file"}"""
     }
 
     private fun respond(exchange: HttpExchange, code: Int, body: String) {

@@ -164,7 +164,8 @@ class BackupCoordinator @Inject constructor(
 
     suspend fun listDriveBackups(token: String): List<DriveFile> {
         val client = DriveClient({ token })
-        return client.list(client.ensureFolder()).filter { it.name.endsWith(BackupFormat.EXTENSION) }
+        val folder = client.findBackupFolder() ?: return emptyList()
+        return client.list(folder).filter { it.name.endsWith(BackupFormat.EXTENSION) }
     }
 
     suspend fun downloadDriveBackup(token: String, fileId: String): File = withContext(io) {

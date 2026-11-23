@@ -3,6 +3,7 @@ package com.myvault.app.backup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
@@ -27,13 +28,14 @@ data class DriveFile(
 }
 
 @Serializable
-private data class DriveFileList(val files: List<DriveFile> = emptyList())
+private data class DriveFileList(val files: List<DriveFile> = emptyList(), val nextPageToken: String? = null)
 
 /**
  * Minimal Google Drive v3 client over HTTPS, covering exactly what encrypted backups need.
  *
  * It is written for the `drive.file` scope: the app can only see files it created itself. The
- * only thing it ever uploads is an already-encrypted backup archive.
+ * only thing it ever uploads is an already-encrypted backup archive. Backups live in a
+ * "MyVault Backups" folder, created at the top of My Drive.
  */
 class DriveClient(
     private val token: suspend () -> String,
@@ -41,15 +43,22 @@ class DriveClient(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Returns the id of the app's backup folder, creating it on first use. */
-    suspend fun ensureFolder(): String {
+    /** Returns the id of the "MyVault Backups" folder, creating it on first use. */
+    suspend fun ensureFolder(): String = findBackupFolder() ?: createFolder()
+
+    /**
+     * The backup folder's id, or null if nothing has been backed up yet. Never creates a folder.
+     * It is found wherever it is in My Drive, so the user can move it into a folder of their own;
+     * the app keeps access to a folder it created. The oldest wins, so a duplicate never takes over.
+     */
+    suspend fun findBackupFolder(): String? {
         val query = "name = '$FOLDER_NAME' and mimeType = '$FOLDER_MIME' and trashed = false"
-        val existing = json.decodeFromString(
-            DriveFileList.serializer(),
-            request("GET", "$baseUrl/drive/v3/files?q=${encode(query)}&spaces=drive&fields=${encode("files(id,name)")}"),
-        ).files.firstOrNull()
-        if (existing != null) return existing.id
-        val body = """{"name":"$FOLDER_NAME","mimeType":"$FOLDER_MIME"}"""
+        val url = "$baseUrl/drive/v3/files?q=${encode(query)}&orderBy=${encode("createdTime")}&spaces=drive&fields=${encode("files(id,name)")}"
+        return json.decodeFromString(DriveFileList.serializer(), request("GET", url)).files.firstOrNull()?.id
+    }
+
+    private suspend fun createFolder(): String {
+        val body = """{"name":${quote(FOLDER_NAME)},"mimeType":"$FOLDER_MIME"}"""
         return json.decodeFromString(DriveFile.serializer(), request("POST", "$baseUrl/drive/v3/files?fields=id", body)).id
     }
 
@@ -60,7 +69,7 @@ class DriveClient(
     suspend fun upload(folderId: String, name: String, file: File, onProgress: (sent: Long, total: Long) -> Unit = { _, _ -> }): DriveFile =
         withContext(Dispatchers.IO) {
             val total = file.length()
-            val metadata = """{"name":"${name.replace("\"", "")}","parents":["$folderId"],"mimeType":"${BackupFormat.MIME_TYPE}"}"""
+            val metadata = """{"name":${quote(name)},"parents":[${quote(folderId)}],"mimeType":"${BackupFormat.MIME_TYPE}"}"""
             val start = open("POST", "$baseUrl/upload/drive/v3/files?uploadType=resumable&fields=${encode(FILE_FIELDS)}")
             val sessionUrl = try {
                 start.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
@@ -112,12 +121,19 @@ class DriveClient(
             stored
         }
 
-    /** Backups in the folder, newest first. */
+    /** Every file in the folder, newest first. Drive returns them a page at a time. */
     suspend fun list(folderId: String): List<DriveFile> {
         val query = "'$folderId' in parents and trashed = false"
-        val url = "$baseUrl/drive/v3/files?q=${encode(query)}&orderBy=${encode("createdTime desc")}&pageSize=100&spaces=drive" +
-            "&fields=${encode("files($FILE_FIELDS)")}"
-        return json.decodeFromString(DriveFileList.serializer(), request("GET", url)).files
+        val all = mutableListOf<DriveFile>()
+        var pageToken: String? = null
+        do {
+            val url = "$baseUrl/drive/v3/files?q=${encode(query)}&orderBy=${encode("createdTime desc")}&pageSize=$PAGE_SIZE&spaces=drive" +
+                "&fields=${encode("nextPageToken,files($FILE_FIELDS)")}" + (pageToken?.let { "&pageToken=${encode(it)}" } ?: "")
+            val page = json.decodeFromString(DriveFileList.serializer(), request("GET", url))
+            all += page.files
+            pageToken = page.nextPageToken?.takeIf { it.isNotEmpty() }
+        } while (pageToken != null && all.size < MAX_LISTED)
+        return all
     }
 
     suspend fun download(fileId: String, into: File, onProgress: (received: Long) -> Unit = {}) = withContext(Dispatchers.IO) {
@@ -194,10 +210,17 @@ class DriveClient(
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
+    /** A JSON string literal, so any file name is sent safely. */
+    private fun quote(value: String): String = Json.encodeToString(String.serializer(), value)
+
     companion object {
         const val FOLDER_NAME = "MyVault Backups"
         const val SCOPE = "https://www.googleapis.com/auth/drive.file"
         private const val FOLDER_MIME = "application/vnd.google-apps.folder"
         private const val FILE_FIELDS = "id,name,size,createdTime,md5Checksum"
+        /** Drive's largest allowed page. */
+        private const val PAGE_SIZE = 1000
+        /** Stops a runaway listing; far more backups than are ever kept. */
+        private const val MAX_LISTED = 10_000
     }
 }
