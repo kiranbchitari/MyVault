@@ -1,5 +1,6 @@
 package com.myvault.app
 
+import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -31,6 +32,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.myvault.app.di.VaultEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.runBlocking
@@ -119,6 +121,18 @@ class VaultFlowTest {
         compose.onNodeWithTag("home-list").performScrollToIndex(0)
     }
 
+    /** What is on the clipboard. Read on the main thread, with the app in front, as Android requires. */
+    private fun clipboardText(): String? {
+        var text: String? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            text = context.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString()
+        }
+        return text
+    }
+
+    /** A field's value on the detail screen. Its row is one tappable (copy) element, so the text sits in the unmerged tree. */
+    private fun valueOf(key: String) = compose.onNodeWithTag("value-$key", useUnmergedTree = true)
+
     private fun passphraseFieldText(): String =
         compose.onNodeWithTag("passphrase").fetchSemanticsNode().config.getOrNull(SemanticsProperties.EditableText)?.text.orEmpty()
 
@@ -174,23 +188,33 @@ class VaultFlowTest {
         waitForTag("pick-PASSWORD")
         compose.onNodeWithTag("pick-PASSWORD").performClick()
         waitForTag("item-edit")
-        compose.onNodeWithTag("save").performScrollTo().clickWhenSettled()
+        compose.onNodeWithTag("save").clickWhenSettled()
         waitForText("Website or app name is required.")
         compose.onNodeWithTag("field-title").performScrollTo().performTextInput("Northwind Mail")
         compose.onNodeWithTag("field-username").performScrollTo().performTextInput("alex.rivera")
         compose.onNodeWithTag("field-password").performScrollTo().performTextInput(secret)
+        // Tags are an optional extra: one tap adds the row
+        compose.onNodeWithTag("add-tags").performScrollTo().performClick()
         compose.onNodeWithTag("field-tags").performScrollTo().performTextInput("email, personal")
-        compose.onNodeWithTag("save").performScrollTo().clickWhenSettled()
+        compose.onNodeWithTag("save").clickWhenSettled()
 
         // Item details: the secret is masked until revealed
         waitForTag("item-detail")
         waitForText("Northwind Mail")
-        compose.onNodeWithTag("value-password").assertTextEquals("••••••••••")
+        valueOf("password").assertTextEquals("••••••••••")
         assertTrue(compose.onAllNodesWithText(secret).fetchSemanticsNodes().isEmpty())
         compose.onNodeWithTag("reveal-password").performClick()
-        compose.onNodeWithTag("value-password").assertTextEquals(secret)
+        valueOf("password").assertTextEquals(secret)
         compose.onNodeWithTag("reveal-password").performClick()
-        compose.onNodeWithTag("value-password").assertTextEquals("••••••••••")
+        valueOf("password").assertTextEquals("••••••••••")
+
+        // One tap on the main button copies the password, flagged sensitive, without revealing it
+        compose.onNodeWithTag("copy-main").performClick()
+        waitFor("the password on the clipboard", 5_000) { clipboardText() == secret }
+        valueOf("password").assertTextEquals("••••••••••")
+        // ...and so does tapping the row of any other field
+        compose.onNodeWithTag("row-username").performClick()
+        waitFor("the username on the clipboard", 5_000) { clipboardText() == "alex.rivera" }
         compose.onNodeWithTag("favorite").performClick()
 
         // The stored row is ciphertext: no title, username, tag or secret is readable in it
@@ -203,8 +227,9 @@ class VaultFlowTest {
         // Edit it
         compose.onNodeWithTag("edit").performClick()
         waitForTag("item-edit")
+        compose.onNodeWithTag("add-notes").performScrollTo().performClick()
         compose.onNodeWithTag("field-notes").performScrollTo().performTextInput("Renew in March")
-        compose.onNodeWithTag("save").performScrollTo().clickWhenSettled()
+        compose.onNodeWithTag("save").clickWhenSettled()
         waitForTag("item-detail")
         waitForText("Renew in March")
 
@@ -212,6 +237,9 @@ class VaultFlowTest {
         compose.onNodeWithContentDescription("Back").performClick()
         waitForTag("home")
         showOnHome("item-Northwind Mail")
+        // The list copies the password in one tap, without opening the item
+        compose.onAllNodesWithTag("quick-copy-Northwind Mail").onFirst().performClick()
+        waitFor("the password on the clipboard", 5_000) { clipboardText() == secret }
         homeTop()
         compose.onNodeWithTag("search-bar").performClick()
         waitForTag("search")

@@ -72,6 +72,24 @@ data class VaultItem(
             ItemType.DEVELOPER_SECRET -> listOf(field("service"), field("environment")).filter { it.isNotEmpty() }.joinToString(" · ")
             ItemType.CUSTOM -> customTypeName
         }
+
+    /**
+     * The one value this record is usually opened for: its password, PIN, key or number. Lists
+     * offer it as a single-tap copy. Null when the record holds nothing worth copying that way.
+     */
+    val quickCopyField: ItemField?
+        get() {
+            val key = when (type) {
+                ItemType.PASSWORD, ItemType.WIFI -> "password"
+                ItemType.APP_PIN -> "pin"
+                ItemType.BANK_ACCOUNT, ItemType.IDENTITY -> "number"
+                ItemType.DEVELOPER_SECRET -> "secret"
+                ItemType.SECURE_NOTE -> "body"
+                ItemType.CREDIT_CARD, ItemType.DEBIT_CARD, ItemType.CUSTOM -> null
+            }
+            return fields.firstOrNull { !it.custom && it.key == key && it.value.isNotEmpty() }
+                ?: fields.firstOrNull { it.kind == FieldKind.SECRET && it.value.isNotEmpty() }
+        }
 }
 
 /** Decrypted description of an attachment; the file contents stay encrypted until opened. */

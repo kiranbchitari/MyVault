@@ -1,6 +1,6 @@
 package com.myvault.app.ui.components
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -32,9 +33,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.StickyNote2
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.CreditCard
@@ -64,21 +67,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -184,6 +183,8 @@ fun ScreenColumn(
     actions: @Composable RowScope.() -> Unit = {},
     scroll: Boolean = true,
     floating: @Composable BoxScope.() -> Unit = {},
+    /** Pinned under the scrolling content, and kept above the keyboard. */
+    bottomBar: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(modifier.fillMaxSize().imePadding(), contentAlignment = Alignment.TopCenter) {
@@ -191,6 +192,7 @@ fun ScreenColumn(
             VaultTopBar(title, onBack, actions)
             val body = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 18.dp)
             Column(if (scroll) body.verticalScroll(rememberScrollState()) else body, content = content)
+            if (bottomBar != null) Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), content = bottomBar)
         }
         floating()
     }
@@ -212,15 +214,48 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier, action: String? =
     }
 }
 
+/**
+ * A round copy button. For a couple of seconds after its value is copied it turns into a green
+ * tick, which is the confirmation people look for.
+ */
 @Composable
-fun ItemRow(item: VaultItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun CopyButton(label: String, copied: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val palette = VaultTheme.palette
+    val tint = if (copied) palette.success else palette.accent
+    Box(
+        modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(tint.copy(alpha = 0.13f)), contentAlignment = Alignment.Center) {
+            Crossfade(copied, label = "copied") { done ->
+                Icon(
+                    if (done) Icons.Rounded.Check else Icons.Outlined.ContentCopy,
+                    contentDescription = if (done) "$label, copied" else label,
+                    tint = tint,
+                    modifier = Modifier.size(if (done) 21.dp else 18.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One record in a list. With [onCopy], records that have a main value (a password, PIN, key…)
+ * get a copy button, so the value can be taken without opening the record.
+ */
+@Composable
+fun ItemRow(item: VaultItem, onClick: () -> Unit, modifier: Modifier = Modifier, onCopy: (() -> Unit)? = null, copied: Boolean = false) {
+    val quick = if (onCopy != null) item.quickCopyField else null
     VaultSurface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().testTag("item-${item.title}"),
         shape = RoundedCornerShape(18.dp),
         elevation = 6.dp,
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.heightIn(min = 72.dp).padding(start = 14.dp, end = if (quick != null) 6.dp else 14.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             TypeIcon(item.type, size = 42.dp)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
@@ -232,7 +267,11 @@ fun ItemRow(item: VaultItem, onClick: () -> Unit, modifier: Modifier = Modifier)
                 Icon(Icons.Rounded.Star, contentDescription = "Favorite", tint = VaultTheme.palette.favorite, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(6.dp))
             }
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+            if (quick != null && onCopy != null) {
+                CopyButton("Copy ${quick.label.lowercase()}", copied, onCopy, Modifier.testTag("quick-copy-${item.title}"))
+            } else {
+                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+            }
         }
     }
 }
@@ -291,6 +330,11 @@ fun FormRow(
 ) {
     val userActivity = LocalUserActivity.current
     val palette = VaultTheme.palette
+    // The field's own text and cursor. When the caller hands back something other than what was
+    // typed (digits filtered, a slash added to a date), the cursor goes to the end of the new
+    // text; left where it was, the next keystroke would land in the middle of it.
+    var typed by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    val field = if (typed.text == value) typed else TextFieldValue(value, TextRange(value.length))
     Row(
         modifier.fillMaxWidth().padding(start = 16.dp, end = if (trailing != null) 4.dp else 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = if (singleLine) Alignment.CenterVertically else Alignment.Top,
@@ -301,10 +345,11 @@ fun FormRow(
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(2.dp))
             BasicTextField(
-                value = value,
-                onValueChange = {
+                value = field,
+                onValueChange = { new ->
                     userActivity()
-                    onValueChange(it)
+                    typed = new
+                    if (new.text != value) onValueChange(new.text)
                 },
                 modifier = fieldModifier.fillMaxWidth().heightIn(min = 24.dp),
                 singleLine = singleLine,
@@ -329,6 +374,30 @@ fun FormRow(
             )
         }
         if (trailing != null) trailing()
+    }
+}
+
+/** One-tap answers for a field. Tapping the chosen one again clears it. */
+@Composable
+fun SuggestionChips(options: List<String>, selected: String, onPick: (String) -> Unit, modifier: Modifier = Modifier, tagPrefix: String = "suggest") {
+    val palette = VaultTheme.palette
+    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { option ->
+            val chosen = option.equals(selected.trim(), ignoreCase = true)
+            Text(
+                option,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (chosen) Color.White else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (chosen) palette.accent else palette.fill)
+                    .selectable(selected = chosen, role = Role.RadioButton, onClick = { onPick(if (chosen) "" else option) })
+                    .testTag("$tagPrefix-$option")
+                    .padding(horizontal = 13.dp, vertical = 7.dp),
+            )
+        }
     }
 }
 
@@ -501,66 +570,6 @@ fun TagRow(tags: List<String>, modifier: Modifier = Modifier, onRemove: ((String
                     Text("✕", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-        }
-    }
-}
-
-/** A payment-card visual for card records. It shows only what is stored: nickname, network, last four. */
-@Composable
-fun CardPreview(nickname: String, network: String, lastFour: String, modifier: Modifier = Modifier, tint: Color = Color(0xFF1F5BFF)) {
-    val shape = RoundedCornerShape(22.dp)
-    Box(
-        modifier
-            .fillMaxWidth()
-            .widthIn(max = 400.dp)
-            .height(172.dp)
-            .shadow(18.dp, shape, ambientColor = tint.copy(alpha = 0.45f), spotColor = tint.copy(alpha = 0.45f))
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(lerp(tint, Color.White, 0.14f), tint, lerp(tint, Color(0xFF07175F), 0.62f)))),
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            // A soft wave of lighter colour across the lower right.
-            val wave = Path().apply {
-                moveTo(size.width * 0.38f, size.height)
-                cubicTo(size.width * 0.62f, size.height * 0.92f, size.width * 0.66f, size.height * 0.42f, size.width, size.height * 0.30f)
-                lineTo(size.width, size.height)
-                close()
-            }
-            drawPath(wave, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.04f), Color.White.copy(alpha = 0.20f))))
-            // Contact chip.
-            val chipOrigin = Offset(22.dp.toPx(), 24.dp.toPx())
-            val chipSize = Size(42.dp.toPx(), 32.dp.toPx())
-            drawRoundRect(Color.White.copy(alpha = 0.88f), chipOrigin, chipSize, CornerRadius(7.dp.toPx()))
-            val line = Color(0x552A4FCC)
-            val stroke = Stroke(1.2.dp.toPx())
-            drawLine(line, Offset(chipOrigin.x, chipOrigin.y + chipSize.height / 2), Offset(chipOrigin.x + chipSize.width, chipOrigin.y + chipSize.height / 2), stroke.width)
-            drawLine(line, Offset(chipOrigin.x + chipSize.width * 0.36f, chipOrigin.y), Offset(chipOrigin.x + chipSize.width * 0.36f, chipOrigin.y + chipSize.height), stroke.width)
-            drawLine(line, Offset(chipOrigin.x + chipSize.width * 0.64f, chipOrigin.y), Offset(chipOrigin.x + chipSize.width * 0.64f, chipOrigin.y + chipSize.height), stroke.width)
-        }
-        Text(
-            network.uppercase(),
-            style = MaterialTheme.typography.titleLarge,
-            fontStyle = FontStyle.Italic,
-            fontWeight = FontWeight.Black,
-            color = Color.White,
-            maxLines = 1,
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 22.dp, end = 22.dp),
-        )
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 20.dp, end = 22.dp)) {
-            Text(
-                nickname.ifBlank { "Card nickname" },
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White.copy(alpha = if (nickname.isBlank()) 0.6f else 1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "••••  ${lastFour.ifBlank { "••••" }}",
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = FontFamily.Monospace,
-                color = Color.White.copy(alpha = 0.92f),
-            )
         }
     }
 }

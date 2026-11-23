@@ -69,11 +69,14 @@ import com.myvault.app.vault.ItemType
 import com.myvault.app.vault.VaultItem
 import com.myvault.app.vault.VaultSearch
 
+/** A list of records, each with a one-tap copy of its main value. */
 @Composable
-private fun ItemList(items: List<VaultItem>, onItem: (String) -> Unit, modifier: Modifier = Modifier, header: (@Composable () -> Unit)? = null) {
+private fun ItemList(vault: VaultViewModel, items: List<VaultItem>, onItem: (String) -> Unit, modifier: Modifier = Modifier, header: (@Composable () -> Unit)? = null) {
+    val quickCopy = rememberQuickCopy(vault)
+    val copied by vault.copied.collectAsStateWithLifecycle()
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(top = 4.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (header != null) item { header() }
-        items(items, key = { it.id }) { ItemRow(it, { onItem(it.id) }) }
+        items(items, key = { it.id }) { ItemRow(it, { onItem(it.id) }, onCopy = { quickCopy(it) }, copied = copied?.itemId == it.id) }
     }
 }
 
@@ -137,7 +140,7 @@ fun CategoryDetailsScreen(vault: VaultViewModel, type: ItemType, onBack: () -> U
         if (items.isEmpty()) {
             EmptyState(type.icon, "No ${type.plural.lowercase()} yet", "Anything you add here is encrypted before it is saved.", action = "Add ${type.label.lowercase()}", onAction = onNew)
         } else {
-            ItemList(items, onItem, Modifier.padding(top = 4.dp))
+            ItemList(vault, items, onItem, Modifier.padding(top = 4.dp))
         }
     }
 }
@@ -150,7 +153,7 @@ fun FavoritesScreen(vault: VaultViewModel, onItem: (String) -> Unit) {
         if (favorites.isEmpty()) {
             EmptyState(Icons.Rounded.StarBorder, "No favorites yet", "Star the items you reach for most and they'll be waiting here.")
         } else {
-            ItemList(favorites, onItem, Modifier.padding(top = 4.dp))
+            ItemList(vault, favorites, onItem, Modifier.padding(top = 4.dp))
         }
     }
 }
@@ -205,12 +208,12 @@ fun SearchScreen(vault: VaultViewModel, onBack: () -> Unit, onItem: (String) -> 
                 if (recent.isEmpty()) {
                     EmptyState(Icons.Rounded.Search, "Find anything", "Search by name, category, tag, or the contents of any non-secret field.")
                 } else {
-                    ItemList(recent, onItem, header = { SectionHeader("Recently opened") })
+                    ItemList(vault, recent, onItem, header = { SectionHeader("Recently opened") })
                 }
             }
             results.isEmpty() -> EmptyState(Icons.Rounded.SearchOff, "No matches", "Nothing in your vault matches that. Passwords and other secret values are never searched.")
             else -> ItemList(
-                results, onItem,
+                vault, results, onItem,
                 header = {
                     Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 4.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(

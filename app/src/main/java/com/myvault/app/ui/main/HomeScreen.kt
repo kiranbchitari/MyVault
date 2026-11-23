@@ -56,6 +56,7 @@ import com.myvault.app.ui.components.SectionHeader
 import com.myvault.app.ui.components.VaultLogo
 import com.myvault.app.ui.components.VaultSurface
 import com.myvault.app.ui.items.CategoryCard
+import com.myvault.app.ui.items.rememberQuickCopy
 import com.myvault.app.ui.theme.VaultTheme
 import com.myvault.app.vault.ItemType
 import com.myvault.app.vault.VaultSearch
@@ -82,6 +83,8 @@ fun HomeScreen(
     val contents by vault.contents.collectAsStateWithLifecycle()
     val backup by vault.backup.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf(false) }
+    val quickCopy = rememberQuickCopy(vault)
+    val copied by vault.copied.collectAsStateWithLifecycle()
     val items = contents?.items
     val palette = VaultTheme.palette
 
@@ -224,12 +227,16 @@ fun HomeScreen(
 
                 if (favorites.isNotEmpty()) {
                     item { SectionHeader("Favorites", action = if (favorites.size > 3) "See all" else null, onAction = onAllFavorites) }
-                    items(favorites.take(3), key = { "fav-${it.id}" }) { ItemRow(it, { onItem(it.id) }, Modifier.padding(bottom = 10.dp)) }
+                    items(favorites.take(3), key = { "fav-${it.id}" }) {
+                        ItemRow(it, { onItem(it.id) }, Modifier.padding(bottom = 10.dp), onCopy = { quickCopy(it) }, copied = copied?.itemId == it.id)
+                    }
                 }
 
                 if (recent.isNotEmpty()) {
                     item { SectionHeader("Recently opened") }
-                    items(recent, key = { "recent-${it.id}" }) { ItemRow(it, { onItem(it.id) }, Modifier.padding(bottom = 10.dp)) }
+                    items(recent, key = { "recent-${it.id}" }) {
+                        ItemRow(it, { onItem(it.id) }, Modifier.padding(bottom = 10.dp), onCopy = { quickCopy(it) }, copied = copied?.itemId == it.id)
+                    }
                 }
             }
         }

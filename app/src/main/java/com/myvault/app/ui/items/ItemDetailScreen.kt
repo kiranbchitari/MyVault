@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
-import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -27,6 +26,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.Icon
@@ -55,28 +55,27 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.myvault.app.security.BiometricAuthResult
-import com.myvault.app.security.authenticate
 import com.myvault.app.ui.components.CardPreview
 import com.myvault.app.ui.components.ConfirmDialog
+import com.myvault.app.ui.components.CopyButton
 import com.myvault.app.ui.components.FormGroup
 import com.myvault.app.ui.components.IconTile
 import com.myvault.app.ui.components.RowDivider
-import com.myvault.app.ui.components.tint
 import com.myvault.app.ui.components.LocalExpectExternalFlow
-import com.myvault.app.ui.components.PassphraseDialog
+import com.myvault.app.ui.components.PrimaryButton
 import com.myvault.app.ui.components.QuietButton
 import com.myvault.app.ui.components.ScreenColumn
 import com.myvault.app.ui.components.TagRow
 import com.myvault.app.ui.components.TypeIcon
 import com.myvault.app.ui.components.VaultCard
+import com.myvault.app.ui.main.CopiedMark
 import com.myvault.app.ui.main.VaultViewModel
 import com.myvault.app.ui.main.formatDay
 import com.myvault.app.ui.theme.VaultTheme
 import com.myvault.app.vault.AttachmentInfo
 import com.myvault.app.vault.FieldKind
+import com.myvault.app.vault.ItemField
 import com.myvault.app.vault.ItemTemplates
 import com.myvault.app.vault.ItemType
 import com.myvault.app.vault.VaultRepository
@@ -87,10 +86,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun ItemDetailScreen(vault: VaultViewModel, itemId: String, onBack: () -> Unit, onEdit: () -> Unit) {
     val contents by vault.contents.collectAsStateWithLifecycle()
-    val biometricEnrolled by vault.biometricEnrolled.collectAsStateWithLifecycle()
     val item = contents?.items?.firstOrNull { it.id == itemId }
     val attachments = contents?.attachments?.get(itemId).orEmpty()
-    val activity = LocalActivity.current as? FragmentActivity
+    val copied by vault.copied.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val expectExternalFlow = LocalExpectExternalFlow.current
@@ -98,10 +96,6 @@ fun ItemDetailScreen(vault: VaultViewModel, itemId: String, onBack: () -> Unit, 
 
     val revealed = remember { mutableStateMapOf<String, Boolean>() }
     var confirmDelete by remember { mutableStateOf(false) }
-    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var askPassphrase by remember { mutableStateOf(false) }
-    var passphraseError by remember { mutableStateOf<String?>(null) }
-    var checking by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<ImageBitmap?>(null) }
     var deleteAttachment by remember { mutableStateOf<AttachmentInfo?>(null) }
 
@@ -112,24 +106,11 @@ fun ItemDetailScreen(vault: VaultViewModel, itemId: String, onBack: () -> Unit, 
     }
     if (item == null) return
 
-    /** Runs [action] straight away, or after the user confirms who they are when that is required. */
-    fun guarded(action: () -> Unit) {
-        if (!vault.needsIdentityCheck()) return action()
-        pendingAction = action
-        if (biometricEnrolled && activity != null) {
-            scope.launch {
-                val cipher = vault.beginBiometricConfirm()
-                val result = cipher?.let { activity.authenticate(it, "Confirm it's you", "Needed before a secret is shown", "Use passphrase") }
-                if (result is BiometricAuthResult.Success && vault.finishBiometricConfirm(result.cipher)) {
-                    pendingAction?.invoke()
-                    pendingAction = null
-                } else {
-                    askPassphrase = true
-                }
-            }
-        } else {
-            askPassphrase = true
-        }
+    // Showing or copying a secret goes through this gate, which may first ask who is there.
+    val guarded = rememberIdentityGuard(vault)
+
+    fun copy(field: ItemField) {
+        if (field.kind == FieldKind.SECRET) guarded { vault.copyField(item, field) } else vault.copyField(item, field)
     }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -166,8 +147,17 @@ fun ItemDetailScreen(vault: VaultViewModel, itemId: String, onBack: () -> Unit, 
         },
     ) {
         if (item.type.isCard) {
-            CardPreview(item.title, item.field("network"), item.field("last4"), Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp), tint = item.type.tint())
-            Spacer(Modifier.height(22.dp))
+            CardPreview(
+                nickname = item.title,
+                network = item.field("network"),
+                lastFour = item.field("last4"),
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp),
+                holder = item.field("holder"),
+                bank = item.field("bank"),
+                expiry = item.field("expiry"),
+                credit = item.type == ItemType.CREDIT_CARD,
+            )
+            Spacer(Modifier.height(24.dp))
         } else {
             Row(Modifier.padding(top = 6.dp, bottom = 20.dp, start = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 TypeIcon(item.type, size = 58.dp)
@@ -183,6 +173,18 @@ fun ItemDetailScreen(vault: VaultViewModel, itemId: String, onBack: () -> Unit, 
             }
         }
 
+        // The value this record is usually opened for gets one large button of its own.
+        item.quickCopyField?.let { main ->
+            val done = copied == CopiedMark(item.id, main.key)
+            PrimaryButton(
+                text = if (done) "Copied" else "Copy ${main.label.lowercase()}",
+                onClick = { copy(main) },
+                icon = if (done) Icons.Rounded.Check else Icons.Outlined.ContentCopy,
+                modifier = Modifier.testTag("copy-main"),
+            )
+            Spacer(Modifier.height(18.dp))
+        }
+
         val shown = item.fields.filter { it.value.isNotEmpty() }
         if (shown.isNotEmpty()) {
             FormGroup {
@@ -190,7 +192,14 @@ fun ItemDetailScreen(vault: VaultViewModel, itemId: String, onBack: () -> Unit, 
                     if (index > 0) RowDivider()
                     val secret = field.kind == FieldKind.SECRET
                     val visible = !secret || revealed[field.key] == true
-                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 9.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(onClickLabel = "Copy ${field.label.lowercase()}") { copy(field) }
+                            .testTag("row-${field.key}")
+                            .padding(start = 16.dp, end = 4.dp, top = 9.dp, bottom = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Icon(fieldIcon(field.key, field.kind), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
@@ -218,28 +227,39 @@ fun ItemDetailScreen(vault: VaultViewModel, itemId: String, onBack: () -> Unit, 
                                 )
                             }
                         }
-                        IconButton(
-                            onClick = { if (secret) guarded { vault.copy(field.label, field.value, sensitive = true) } else vault.copy(field.label, field.value, sensitive = false) },
+                        CopyButton(
+                            label = "Copy ${field.label.lowercase()}",
+                            copied = copied == CopiedMark(item.id, field.key),
+                            onClick = { copy(field) },
                             modifier = Modifier.testTag("copy-${field.key}"),
-                        ) {
-                            Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy ${field.label}", tint = palette.accent, modifier = Modifier.size(21.dp))
-                        }
+                        )
                     }
                 }
             }
+            Text(
+                "Tap any row to copy it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 6.dp, top = 8.dp),
+            )
             Spacer(Modifier.height(16.dp))
         }
 
         if (item.notes.isNotBlank()) {
             FormGroup {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Icon(fieldIcon("notes"), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                val copyNotes = { vault.copyValue(item, "notes", "Notes", item.notes, sensitive = false) }
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClickLabel = "Copy notes", onClick = copyNotes).padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(fieldIcon("notes"), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp).size(24.dp))
                     Spacer(Modifier.width(14.dp))
-                    Column {
+                    Column(Modifier.weight(1f).padding(top = 4.dp)) {
                         Text("Notes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(2.dp))
                         Text(item.notes, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
                     }
+                    CopyButton("Copy notes", copied == CopiedMark(item.id, "notes"), copyNotes, Modifier.testTag("copy-notes"))
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -329,35 +349,6 @@ fun ItemDetailScreen(vault: VaultViewModel, itemId: String, onBack: () -> Unit, 
             onConfirm = {
                 vault.deleteAttachment(attachment.id)
                 deleteAttachment = null
-            },
-        )
-    }
-
-    if (askPassphrase) {
-        PassphraseDialog(
-            title = "Confirm it's you",
-            body = "Enter your master passphrase to show or copy this secret.",
-            confirmLabel = "Confirm",
-            error = passphraseError,
-            working = checking,
-            onDismiss = {
-                askPassphrase = false
-                pendingAction = null
-                passphraseError = null
-            },
-            onSubmit = { passphrase, _ ->
-                checking = true
-                scope.launch {
-                    if (vault.confirmWithPassphrase(passphrase)) {
-                        askPassphrase = false
-                        passphraseError = null
-                        pendingAction?.invoke()
-                        pendingAction = null
-                    } else {
-                        passphraseError = "Incorrect passphrase."
-                    }
-                    checking = false
-                }
             },
         )
     }

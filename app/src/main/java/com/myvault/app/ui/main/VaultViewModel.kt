@@ -15,21 +15,30 @@ import com.myvault.app.security.VaultManager
 import com.myvault.app.util.DemoData
 import com.myvault.app.util.SecureClipboard
 import com.myvault.app.vault.AttachmentTooLargeException
+import com.myvault.app.vault.FieldKind
+import com.myvault.app.vault.ItemField
 import com.myvault.app.vault.VaultContents
 import com.myvault.app.vault.VaultItem
 import com.myvault.app.vault.VaultRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Clock
 import javax.crypto.Cipher
 import javax.inject.Inject
+
+/** Which value was copied a moment ago, so its row can show a tick. */
+data class CopiedMark(val itemId: String, val fieldKey: String)
 
 data class BackupOverview(val health: BackupHealth = BackupHealth.NOT_SET_UP, val lastSuccessAt: Long? = null, val lastSuccessName: String? = null)
 
@@ -94,6 +103,25 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    private val copiedMark = MutableStateFlow<CopiedMark?>(null)
+    private var copiedReset: Job? = null
+
+    /** The value copied within the last couple of seconds, if any. */
+    val copied: StateFlow<CopiedMark?> = copiedMark.asStateFlow()
+
+    /** Copies one field of [item]; secret fields are flagged sensitive and cleared after a delay. */
+    fun copyField(item: VaultItem, field: ItemField) = copyValue(item, field.key, field.label, field.value, field.kind == FieldKind.SECRET)
+
+    fun copyValue(item: VaultItem, key: String, label: String, value: String, sensitive: Boolean) {
+        copy(label, value, sensitive)
+        copiedMark.value = CopiedMark(item.id, key)
+        copiedReset?.cancel()
+        copiedReset = viewModelScope.launch {
+            delay(COPIED_MARK_MS)
+            copiedMark.value = null
+        }
+    }
+
     fun lock() = vaultManager.lock()
 
     // --- Re-authentication before revealing or copying secrets -------------------------------
@@ -152,5 +180,6 @@ class VaultViewModel @Inject constructor(
 
     private companion object {
         const val IDENTITY_GRACE_MS = 30_000L
+        const val COPIED_MARK_MS = 1_800L
     }
 }

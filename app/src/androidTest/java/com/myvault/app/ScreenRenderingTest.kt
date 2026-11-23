@@ -1,10 +1,19 @@
 package com.myvault.app
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
@@ -12,8 +21,10 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.myvault.app.security.BiometricAvailability
+import com.myvault.app.ui.components.CardPreview
 import com.myvault.app.ui.home.BiometricSetupContent
 import com.myvault.app.ui.home.SecurityUiState
 import com.myvault.app.ui.onboarding.ConfirmPassphraseScreen
@@ -57,6 +68,15 @@ class ScreenRenderingTest {
         },
         Screen("unlock", "Welcome back") {
             UnlockContent(UnlockUiState(biometricEnrolled = true), onUnlock = {}, onUseBiometrics = {})
+        },
+        Screen("payment-cards", "Credit and debit") {
+            Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Text("Credit and debit", color = MaterialTheme.colorScheme.onBackground)
+                CardPreview("Travel Rewards", "Visa", "0000", holder = "Alex Rivera", bank = "Example National Bank", expiry = "09/29", credit = true)
+                CardPreview("Everyday Debit", "RuPay", "1111", holder = "Alex Rivera", bank = "Example National Bank", expiry = "03/28", credit = false)
+                // The add form's starting point: nothing typed yet.
+                CardPreview("", "", "", credit = true, placeholders = true, modifier = Modifier.widthIn(max = 300.dp))
+            }
         },
         Screen("unlock-error", "Incorrect passphrase. Please try again.") {
             UnlockContent(UnlockUiState(error = "Incorrect passphrase. Please try again."), onUnlock = {}, onUseBiometrics = {})

@@ -1,6 +1,18 @@
 package com.myvault.app.vault
 
-enum class InputKind { TEXT, EMAIL, URL, NUMBER, PASSWORD }
+enum class InputKind {
+    TEXT,
+    EMAIL,
+    URL,
+    NUMBER,
+    PASSWORD,
+
+    /** A numeric keypad, without restricting what may be stored. */
+    PIN,
+
+    /** A card expiry: digits typed on a keypad, shown as MM/YY. */
+    EXPIRY,
+}
 
 /** One field of a record type's dedicated form. */
 data class FieldSpec(
@@ -12,6 +24,8 @@ data class FieldSpec(
     val placeholder: String = "",
     /** Offer the password generator next to this field. */
     val generator: Boolean = false,
+    /** Common answers offered as one-tap choices under the field. */
+    val suggestions: List<String> = emptyList(),
 )
 
 data class ItemTemplate(
@@ -21,6 +35,8 @@ data class ItemTemplate(
     /** Shown on the form to steer people away from storing things they should not. */
     val guidance: String? = null,
     val allowsAttachments: Boolean = false,
+    /** Common titles offered as one-tap choices. */
+    val titleSuggestions: List<String> = emptyList(),
 )
 
 object ItemTemplates {
@@ -30,9 +46,9 @@ object ItemTemplates {
     private fun cardFields() = listOf(
         FieldSpec("holder", "Cardholder name"),
         FieldSpec("bank", "Bank"),
-        FieldSpec("network", "Card network", placeholder = "Visa, Mastercard, RuPay…"),
+        FieldSpec("network", "Card network", placeholder = "Visa, Mastercard, RuPay…", suggestions = listOf("Visa", "Mastercard", "RuPay", "Amex")),
         FieldSpec("last4", "Last four digits", input = InputKind.NUMBER, maxLength = 4),
-        FieldSpec("expiry", "Expiry date", maxLength = 5, placeholder = "MM/YY"),
+        FieldSpec("expiry", "Expiry date", input = InputKind.EXPIRY, maxLength = 5, placeholder = "MM/YY"),
     )
 
     private val templates: Map<ItemType, ItemTemplate> = listOf(
@@ -48,7 +64,7 @@ object ItemTemplates {
         ItemTemplate(
             ItemType.APP_PIN, "Application name",
             listOf(
-                FieldSpec("pin", "PIN", FieldKind.SECRET, InputKind.PASSWORD, maxLength = 32),
+                FieldSpec("pin", "PIN", FieldKind.SECRET, InputKind.PIN, maxLength = 32),
                 FieldSpec("username", "Username"),
                 FieldSpec("account", "Associated account"),
             ),
@@ -61,7 +77,7 @@ object ItemTemplates {
                 FieldSpec("number", "Account number", FieldKind.SECRET, InputKind.NUMBER, maxLength = 34),
                 FieldSpec("ifsc", "IFSC", maxLength = 11),
                 FieldSpec("branch", "Branch"),
-                FieldSpec("accountType", "Account type", placeholder = "Savings, Current…"),
+                FieldSpec("accountType", "Account type", placeholder = "Savings, Current…", suggestions = listOf("Savings", "Current", "Salary")),
             ),
             guidance = "Store reference details only. Never save transaction passwords, UPI PINs, OTPs or net-banking authorisation secrets.",
         ),
@@ -83,6 +99,7 @@ object ItemTemplates {
                 FieldSpec("expiry", "Expiry date", placeholder = "DD/MM/YYYY"),
             ),
             allowsAttachments = true,
+            titleSuggestions = listOf("Passport", "Aadhaar", "PAN", "Driving licence", "Voter ID"),
         ),
         ItemTemplate(ItemType.SECURE_NOTE, "Title", listOf(FieldSpec("body", "Note", FieldKind.MULTILINE, maxLength = 20_000))),
         ItemTemplate(
@@ -90,13 +107,32 @@ object ItemTemplates {
             listOf(
                 FieldSpec("service", "Service name"),
                 FieldSpec("secret", "API key or token", FieldKind.SECRET, InputKind.PASSWORD, maxLength = 8_192),
-                FieldSpec("environment", "Environment", placeholder = "Production, staging…"),
+                FieldSpec("environment", "Environment", placeholder = "Production, staging…", suggestions = listOf("Production", "Staging", "Development")),
             ),
         ),
         ItemTemplate(ItemType.CUSTOM, "Title", emptyList()),
     ).associateBy { it.type }
 
     fun of(type: ItemType): ItemTemplate = templates.getValue(type)
+}
+
+/** Tidies what is typed into a field as it is typed. */
+object FieldInput {
+    /** Applies the field's rules to [typed]: its character set, its shape and its length limit. */
+    fun clean(spec: FieldSpec, typed: String): String = when (spec.input) {
+        InputKind.NUMBER -> typed.filter { it.isDigit() || it == ' ' }
+        InputKind.EXPIRY -> expiry(typed)
+        else -> typed
+    }.take(spec.maxLength)
+
+    /**
+     * Shapes a card expiry as MM/YY from the digits alone, so the slash never has to be typed.
+     * The slash appears with the third digit, which leaves backspace free to remove the second.
+     */
+    fun expiry(typed: String): String {
+        val digits = typed.filter(Char::isDigit).take(4)
+        return if (digits.length <= 2) digits else "${digits.take(2)}/${digits.drop(2)}"
+    }
 }
 
 /** Rules that keep dangerous data out of the vault and catch obvious mistakes. */

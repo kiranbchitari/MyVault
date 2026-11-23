@@ -6,32 +6,33 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
@@ -52,6 +53,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.HasDefaultViewModelProviderFactory
@@ -69,10 +71,9 @@ import com.myvault.app.ui.backup.BackupHistoryScreen
 import com.myvault.app.ui.backup.BackupSettingsScreen
 import com.myvault.app.ui.backup.DriveConnectionScreen
 import com.myvault.app.ui.backup.RestoreScreen
-import com.myvault.app.ui.components.FormGroup
-import com.myvault.app.ui.components.RowDivider
 import com.myvault.app.ui.components.TypeIcon
 import com.myvault.app.ui.components.VaultBackground
+import com.myvault.app.ui.components.VaultSurface
 import com.myvault.app.ui.items.CategoriesScreen
 import com.myvault.app.ui.items.CategoryDetailsScreen
 import com.myvault.app.ui.items.FavoritesScreen
@@ -85,6 +86,7 @@ import com.myvault.app.ui.settings.SecurityRecoveryScreen
 import com.myvault.app.ui.settings.SettingsScreen
 import com.myvault.app.ui.theme.VaultTheme
 import com.myvault.app.vault.ItemType
+import kotlinx.coroutines.flow.collectLatest
 
 object Routes {
     const val HOME = "home"
@@ -152,7 +154,12 @@ private fun MainScaffold(startAtRestore: Boolean, onStartHandled: () -> Unit) {
     val route = backStackEntry?.destination?.route
 
     LaunchedEffect(Unit) {
-        vault.messages.collect { snackbar.showSnackbar(it) }
+        // A newer message replaces the one on screen instead of queueing behind it.
+        vault.messages.collectLatest { snackbar.showSnackbar(it) }
+    }
+    LaunchedEffect(route) {
+        // The add and edit forms pin Save to the bottom edge, where a lingering message would cover it.
+        if (route == Routes.NEW_ITEM || route == Routes.EDIT_ITEM) snackbar.currentSnackbarData?.dismiss()
     }
     LaunchedEffect(startAtRestore) {
         if (startAtRestore) {
@@ -287,33 +294,48 @@ private fun BottomBar(navController: NavHostController, currentRoute: String?) {
     }
 }
 
-/** Quick Add: choose what kind of record to create. */
+/** Quick Add: choose what kind of record to create. Every kind is in view at once, one tap away. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TypePickerSheet(onDismiss: () -> Unit, onPicked: (ItemType) -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background, shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)) {
-        Column(Modifier.navigationBarsPadding().padding(horizontal = 18.dp)) {
-            Text("Add to your vault", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(start = 4.dp, bottom = 14.dp))
-            LazyColumn(contentPadding = PaddingValues(bottom = 18.dp)) {
-                item {
-                    FormGroup {
-                        ItemType.entries.forEachIndexed { index, type ->
-                            if (index > 0) RowDivider(startIndent = 66.dp)
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onPicked(type) }
-                                    .testTag("pick-${type.name}")
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                TypeIcon(type, size = 38.dp)
-                                Spacer(Modifier.width(14.dp))
-                                Text(type.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        // Open at full height: every kind should be visible without dragging the sheet up.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.background,
+        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+    ) {
+        Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(start = 18.dp, end = 18.dp, bottom = 18.dp)) {
+            Text("Add to your vault", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(start = 4.dp))
+            Text(
+                "What would you like to keep safe?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 16.dp),
+            )
+            ItemType.entries.chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max).padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { type ->
+                        VaultSurface(
+                            modifier = Modifier.weight(1f).fillMaxHeight().testTag("pick-${type.name}"),
+                            shape = RoundedCornerShape(18.dp),
+                            onClick = { onPicked(type) },
+                            elevation = 5.dp,
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                TypeIcon(type, size = 42.dp)
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    type.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                )
                             }
                         }
                     }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

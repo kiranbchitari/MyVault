@@ -118,4 +118,45 @@ class VaultSearchAndRulesTest {
         assertFalse(ItemValidator.looksLikeCardNumber("4242"))
         assertFalse(ItemValidator.looksLikeCardNumber("Visa ending 4242"))
     }
+
+    @Test
+    fun `a card expiry is shaped as it is typed`() {
+        assertEquals("", FieldInput.expiry(""))
+        assertEquals("0", FieldInput.expiry("0"))
+        // No slash yet after two digits, so backspace can still remove the second one.
+        assertEquals("08", FieldInput.expiry("08"))
+        assertEquals("08/2", FieldInput.expiry("082"))
+        assertEquals("08/29", FieldInput.expiry("0829"))
+        assertEquals("08/29", FieldInput.expiry("08/29"))
+        assertEquals("08/29", FieldInput.expiry("08/2999"))
+        assertEquals("08", FieldInput.expiry("08/"))
+
+        val expiry = ItemTemplates.of(ItemType.CREDIT_CARD).fields.first { it.key == "expiry" }
+        assertEquals("12/30", FieldInput.clean(expiry, "1230"))
+        assertNull(ItemValidator.validate(SampleItems.card().let { c -> c.copy(fields = c.fields.map { if (it.key == "expiry") it.copy(value = FieldInput.clean(expiry, "1230")) else it }) }))
+    }
+
+    @Test
+    fun `typed values keep to their field's rules`() {
+        val last4 = ItemTemplates.of(ItemType.DEBIT_CARD).fields.first { it.key == "last4" }
+        assertEquals("4242", FieldInput.clean(last4, "42a42-99"))
+        // A PIN gets a numeric keypad but is stored as typed: older PINs may hold letters.
+        val pin = ItemTemplates.of(ItemType.APP_PIN).fields.first { it.key == "pin" }
+        assertEquals("12ab", FieldInput.clean(pin, "12ab"))
+    }
+
+    @Test
+    fun `each record offers its main value for one-tap copying`() {
+        assertEquals("S3cr3t-Horse-Battery!", SampleItems.password().quickCopyField?.value)
+        assertEquals("Z1234567", SampleItems.identity().quickCopyField?.value)
+        assertEquals("body", SampleItems.note().quickCopyField?.key)
+        // A card stores nothing secret, so there is nothing to offer...
+        assertNull(SampleItems.card().quickCopyField)
+        // ...unless a hidden field was added to it by hand.
+        val withCode = SampleItems.card().let { it.copy(fields = it.fields + ItemField("x", "Support code", "7781", FieldKind.SECRET, custom = true)) }
+        assertEquals("7781", withCode.quickCopyField?.value)
+        // An empty main value falls back to nothing rather than copying a blank.
+        val blank = SampleItems.password().let { p -> p.copy(fields = p.fields.map { if (it.key == "password") it.copy(value = "") else it }) }
+        assertNull(blank.quickCopyField)
+    }
 }

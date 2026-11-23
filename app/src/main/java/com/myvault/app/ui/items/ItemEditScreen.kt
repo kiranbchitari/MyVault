@@ -1,6 +1,12 @@
 package com.myvault.app.ui.items
 
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,11 +14,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Star
@@ -38,7 +48,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -52,14 +68,15 @@ import com.myvault.app.ui.components.ConfirmDialog
 import com.myvault.app.ui.components.FormGroup
 import com.myvault.app.ui.components.FormRow
 import com.myvault.app.ui.components.RowDivider
+import com.myvault.app.ui.components.SuggestionChips
 import com.myvault.app.ui.components.TagRow
 import com.myvault.app.ui.components.VaultSwitch
-import com.myvault.app.ui.components.tint
 import com.myvault.app.ui.components.ErrorText
 import com.myvault.app.ui.components.PrimaryButton
 import com.myvault.app.ui.components.QuietButton
 import com.myvault.app.ui.components.ScreenColumn
 import com.myvault.app.ui.theme.VaultTheme
+import com.myvault.app.vault.FieldInput
 import com.myvault.app.vault.FieldKind
 import com.myvault.app.vault.FieldSpec
 import com.myvault.app.vault.InputKind
@@ -96,6 +113,12 @@ class ItemEditViewModel @Inject constructor(private val repository: VaultReposit
     var notes by mutableStateOf("")
     var tags by mutableStateOf("")
     var favorite by mutableStateOf(false)
+
+    /** Notes and tags are optional extras: their rows appear once asked for, or when already filled in. */
+    var showNotes by mutableStateOf(false)
+        private set
+    var showTags by mutableStateOf(false)
+        private set
     val values = mutableStateMapOf<String, String>()
     val customFields = mutableStateListOf<CustomFieldDraft>()
     var error by mutableStateOf<String?>(null)
@@ -122,6 +145,25 @@ class ItemEditViewModel @Inject constructor(private val repository: VaultReposit
             favorite = existing.favorite
             existing.fields.filterNot { it.custom }.forEach { values[it.key] = it.value }
             customFields += existing.fields.filter { it.custom }.map { CustomFieldDraft(it.key, it.label, it.value, it.kind == FieldKind.SECRET) }
+            showNotes = existing.notes.isNotBlank()
+            showTags = existing.tags.isNotEmpty()
+        }
+    }
+
+    fun addNotes() {
+        showNotes = true
+    }
+
+    fun addTags() {
+        showTags = true
+    }
+
+    /** Puts the clipboard's text into [spec]'s field, or says why it could not. */
+    fun paste(spec: FieldSpec, clip: String?) {
+        if (clip.isNullOrBlank()) {
+            error = "There's nothing on the clipboard to paste."
+        } else {
+            setValue(spec, clip.trim())
         }
     }
 
@@ -131,8 +173,7 @@ class ItemEditViewModel @Inject constructor(private val repository: VaultReposit
     }
 
     fun setValue(spec: FieldSpec, value: String) {
-        val filtered = if (spec.input == InputKind.NUMBER) value.filter { it.isDigit() || it == ' ' } else value
-        values[spec.key] = filtered.take(spec.maxLength)
+        values[spec.key] = FieldInput.clean(spec, value)
         edited()
     }
 
@@ -197,14 +238,30 @@ class ItemEditViewModel @Inject constructor(private val repository: VaultReposit
 
 @Composable
 fun ItemEditScreen(itemId: String?, newType: ItemType?, onBack: () -> Unit, onSaved: (String) -> Unit, viewModel: ItemEditViewModel = hiltViewModel()) {
-    LaunchedEffect(Unit) { viewModel.start(itemId, newType) }
+    val titleFocus = remember { FocusRequester() }
+    val notesFocus = remember { FocusRequester() }
+    val tagsFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        viewModel.start(itemId, newType)
+        // A new record starts with the cursor in its first field and the keyboard up.
+        if (viewModel.isNew) runCatching { titleFocus.requestFocus() }
+    }
     val template = viewModel.template
+    val context = LocalContext.current
     var confirmDiscard by remember { mutableStateOf(false) }
     var generatorFor by remember { mutableStateOf<FieldSpec?>(null) }
+    // Which optional row was just added, so the cursor can follow it.
+    var justAdded by remember { mutableStateOf<String?>(null) }
     val visible = remember { mutableStateMapOf<String, Boolean>() }
     val leave = { if (viewModel.dirty) confirmDiscard = true else onBack() }
 
     BackHandler(enabled = viewModel.dirty) { confirmDiscard = true }
+    LaunchedEffect(justAdded) {
+        when (justAdded) {
+            "notes" -> runCatching { notesFocus.requestFocus() }
+            "tags" -> runCatching { tagsFocus.requestFocus() }
+        }
+    }
 
     val parsedTags = viewModel.tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 
@@ -224,14 +281,31 @@ fun ItemEditScreen(itemId: String?, newType: ItemType?, onBack: () -> Unit, onSa
                 )
             }
         },
+        bottomBar = {
+            // Save stays in reach however long the form is, and sits just above the keyboard.
+            ErrorText(viewModel.error, Modifier.padding(top = 8.dp, start = 4.dp))
+            Spacer(Modifier.height(8.dp))
+            PrimaryButton(
+                text = if (viewModel.saving) "Encrypting…" else "Save",
+                onClick = { viewModel.save(onSaved) },
+                loading = viewModel.saving,
+                modifier = Modifier.testTag("save"),
+            )
+            Spacer(Modifier.height(12.dp))
+        },
     ) {
         if (viewModel.type.isCard) {
+            // The card fills in as its details are typed.
             CardPreview(
                 nickname = viewModel.title,
                 network = viewModel.values["network"].orEmpty(),
                 lastFour = viewModel.values["last4"].orEmpty(),
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp),
-                tint = viewModel.type.tint(),
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp).widthIn(max = 300.dp),
+                holder = viewModel.values["holder"].orEmpty(),
+                bank = viewModel.values["bank"].orEmpty(),
+                expiry = viewModel.values["expiry"].orEmpty(),
+                credit = viewModel.type == ItemType.CREDIT_CARD,
+                placeholders = true,
             )
             Spacer(Modifier.height(22.dp))
         }
@@ -245,9 +319,24 @@ fun ItemEditScreen(itemId: String?, newType: ItemType?, onBack: () -> Unit, onSa
                     viewModel.title = it.take(120)
                     viewModel.edited()
                 },
-                fieldModifier = Modifier.testTag("field-title"),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                fieldModifier = Modifier.focusRequester(titleFocus).testTag("field-title"),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = if (template.fields.isEmpty() && viewModel.type != ItemType.CUSTOM) ImeAction.Done else ImeAction.Next,
+                ),
             )
+            if (template.titleSuggestions.offeredFor(viewModel.title)) {
+                SuggestionChips(
+                    options = template.titleSuggestions,
+                    selected = viewModel.title,
+                    onPick = {
+                        viewModel.title = it
+                        viewModel.edited()
+                    },
+                    modifier = Modifier.padding(start = 54.dp, end = 16.dp, bottom = 12.dp),
+                    tagPrefix = "suggest-title",
+                )
+            }
             if (viewModel.type == ItemType.CUSTOM) {
                 RowDivider()
                 FormRow(
@@ -260,90 +349,90 @@ fun ItemEditScreen(itemId: String?, newType: ItemType?, onBack: () -> Unit, onSa
                     },
                     fieldModifier = Modifier.testTag("field-customType"),
                     placeholder = "Membership, Insurance, Licence…",
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 )
             }
-            template.fields.forEach { spec ->
+            template.fields.forEachIndexed { index, spec ->
                 RowDivider()
+                val value = viewModel.values[spec.key].orEmpty()
                 val secret = spec.kind == FieldKind.SECRET
+                val multiline = spec.kind == FieldKind.MULTILINE
                 val shown = !secret || visible[spec.key] == true
                 FormRow(
                     icon = fieldIcon(spec.key, spec.kind),
                     label = spec.label,
-                    value = viewModel.values[spec.key].orEmpty(),
+                    value = value,
                     onValueChange = { viewModel.setValue(spec, it) },
                     fieldModifier = Modifier.testTag("field-${spec.key}"),
                     placeholder = spec.placeholder,
-                    singleLine = spec.kind != FieldKind.MULTILINE,
-                    minLines = if (spec.kind == FieldKind.MULTILINE) 5 else 1,
+                    singleLine = !multiline,
+                    minLines = if (multiline) 5 else 1,
                     monospace = secret && shown,
                     visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
-                        autoCorrectEnabled = spec.kind == FieldKind.MULTILINE,
+                        autoCorrectEnabled = multiline,
                         keyboardType = when {
+                            // A keypad for PINs, unless this one already holds letters.
+                            spec.input == InputKind.PIN -> if (value.all(Char::isDigit)) KeyboardType.NumberPassword else KeyboardType.Password
                             secret -> if (spec.input == InputKind.NUMBER) KeyboardType.NumberPassword else KeyboardType.Password
                             spec.input == InputKind.EMAIL -> KeyboardType.Email
                             spec.input == InputKind.URL -> KeyboardType.Uri
-                            spec.input == InputKind.NUMBER -> KeyboardType.Number
+                            spec.input == InputKind.NUMBER || spec.input == InputKind.EXPIRY -> KeyboardType.Number
                             else -> KeyboardType.Text
+                        },
+                        imeAction = when {
+                            multiline -> ImeAction.Default
+                            index < template.fields.lastIndex -> ImeAction.Next
+                            else -> ImeAction.Done
                         },
                     ),
                     trailing = if (secret) {
                         {
+                            if (value.isEmpty()) {
+                                // Keys and tokens are nearly always copied from somewhere else.
+                                Text(
+                                    "Paste",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = VaultTheme.palette.accent,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable(role = Role.Button) {
+                                            viewModel.paste(spec, clipboardText(context))
+                                            if (viewModel.values[spec.key].orEmpty().isNotEmpty()) visible[spec.key] = true
+                                        }
+                                        .testTag("paste-${spec.key}")
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                )
+                            }
                             if (spec.generator) {
                                 IconButton(onClick = { generatorFor = spec }, modifier = Modifier.testTag("generate-${spec.key}")) {
                                     Icon(Icons.Rounded.AutoAwesome, contentDescription = "Generate a password", tint = VaultTheme.palette.accent)
                                 }
                             }
-                            IconButton(onClick = { visible[spec.key] = !shown }) {
-                                Icon(
-                                    if (shown) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                    contentDescription = if (shown) "Hide" else "Show",
-                                    tint = VaultTheme.palette.accent,
-                                )
+                            if (value.isNotEmpty()) {
+                                IconButton(onClick = { visible[spec.key] = !shown }) {
+                                    Icon(
+                                        if (shown) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                        contentDescription = if (shown) "Hide" else "Show",
+                                        tint = VaultTheme.palette.accent,
+                                    )
+                                }
                             }
                         }
                     } else {
                         null
                     },
                 )
-            }
-            RowDivider()
-            FormRow(
-                icon = fieldIcon("notes"),
-                label = "Notes",
-                value = viewModel.notes,
-                onValueChange = {
-                    viewModel.notes = it.take(10_000)
-                    viewModel.edited()
-                },
-                fieldModifier = Modifier.testTag("field-notes"),
-                singleLine = false,
-                minLines = 2,
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-            )
-            RowDivider()
-            FormRow(
-                icon = fieldIcon("tags"),
-                label = "Tags",
-                value = viewModel.tags,
-                onValueChange = {
-                    viewModel.tags = it.take(300)
-                    viewModel.edited()
-                },
-                fieldModifier = Modifier.testTag("field-tags"),
-                placeholder = "work, travel, family",
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
-            )
-            if (parsedTags.isNotEmpty()) {
-                TagRow(
-                    tags = parsedTags,
-                    modifier = Modifier.padding(start = 54.dp, end = 16.dp, bottom = 14.dp),
-                    onRemove = { removed ->
-                        viewModel.tags = parsedTags.filterNot { it == removed }.joinToString(", ")
-                        viewModel.edited()
-                    },
-                )
+                if (spec.suggestions.offeredFor(value)) {
+                    SuggestionChips(
+                        options = spec.suggestions,
+                        selected = value,
+                        onPick = { viewModel.setValue(spec, it) },
+                        modifier = Modifier.padding(start = 54.dp, end = 16.dp, bottom = 12.dp),
+                        tagPrefix = "suggest-${spec.key}",
+                    )
+                }
             }
         }
 
@@ -356,15 +445,63 @@ fun ItemEditScreen(itemId: String?, newType: ItemType?, onBack: () -> Unit, onSa
             )
         }
 
+        if (viewModel.showNotes || viewModel.showTags) {
+            Spacer(Modifier.height(16.dp))
+            FormGroup {
+                if (viewModel.showNotes) {
+                    FormRow(
+                        icon = fieldIcon("notes"),
+                        label = "Notes",
+                        value = viewModel.notes,
+                        onValueChange = {
+                            viewModel.notes = it.take(10_000)
+                            viewModel.edited()
+                        },
+                        fieldModifier = Modifier.focusRequester(notesFocus).testTag("field-notes"),
+                        singleLine = false,
+                        minLines = 2,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    )
+                }
+                if (viewModel.showNotes && viewModel.showTags) RowDivider()
+                if (viewModel.showTags) {
+                    FormRow(
+                        icon = fieldIcon("tags"),
+                        label = "Tags",
+                        value = viewModel.tags,
+                        onValueChange = {
+                            viewModel.tags = it.take(300)
+                            viewModel.edited()
+                        },
+                        fieldModifier = Modifier.focusRequester(tagsFocus).testTag("field-tags"),
+                        placeholder = "work, travel, family",
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Done),
+                    )
+                    if (parsedTags.isNotEmpty()) {
+                        TagRow(
+                            tags = parsedTags,
+                            modifier = Modifier.padding(start = 54.dp, end = 16.dp, bottom = 14.dp),
+                            onRemove = { removed ->
+                                viewModel.tags = parsedTags.filterNot { it == removed }.joinToString(", ")
+                                viewModel.edited()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
         viewModel.customFields.forEachIndexed { index, draft ->
             Spacer(Modifier.height(16.dp))
             FormGroup {
                 FormRow(
                     icon = Icons.Outlined.Tune,
-                    label = "Custom field name",
+                    label = "Field name",
                     value = draft.label,
                     onValueChange = { viewModel.updateCustomField(index, draft.copy(label = it.take(60))) },
                     fieldModifier = Modifier.testTag("custom-label-$index"),
+                    placeholder = "Member number, Recovery code…",
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
                     trailing = {
                         IconButton(onClick = { viewModel.removeCustomField(index) }) {
                             Icon(Icons.Rounded.Close, contentDescription = "Remove field", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -380,7 +517,7 @@ fun ItemEditScreen(itemId: String?, newType: ItemType?, onBack: () -> Unit, onSa
                     onValueChange = { viewModel.updateCustomField(index, draft.copy(value = it.take(2_000))) },
                     fieldModifier = Modifier.testTag("custom-value-$index"),
                     visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = if (draft.secret) KeyboardType.Password else KeyboardType.Text),
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = if (draft.secret) KeyboardType.Password else KeyboardType.Text, imeAction = ImeAction.Done),
                     trailing = if (draft.secret) {
                         {
                             IconButton(onClick = { visible[draft.key] = !shown }) {
@@ -393,23 +530,32 @@ fun ItemEditScreen(itemId: String?, newType: ItemType?, onBack: () -> Unit, onSa
                 )
                 RowDivider()
                 Row(Modifier.fillMaxWidth().padding(start = 54.dp, end = 14.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Treat as secret", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                    Text("Keep it hidden", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                     VaultSwitch(checked = draft.secret, onCheckedChange = { viewModel.updateCustomField(index, draft.copy(secret = it)) })
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
-        QuietButton("Add a custom field", viewModel::addCustomField, modifier = Modifier.testTag("add-custom-field"))
 
-        Spacer(Modifier.height(6.dp))
-        ErrorText(viewModel.error, Modifier.padding(bottom = 10.dp, start = 4.dp))
-        PrimaryButton(
-            text = if (viewModel.saving) "Encrypting…" else "Save",
-            onClick = { viewModel.save(onSaved) },
-            loading = viewModel.saving,
-            modifier = Modifier.testTag("save"),
-        )
-        Spacer(Modifier.height(24.dp))
+        // Optional extras, one tap each, instead of empty rows on every form.
+        Row(
+            Modifier.padding(top = 16.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (!viewModel.showNotes) {
+                AddChip("Notes", Modifier.testTag("add-notes")) {
+                    viewModel.addNotes()
+                    justAdded = "notes"
+                }
+            }
+            if (!viewModel.showTags) {
+                AddChip("Tags", Modifier.testTag("add-tags")) {
+                    viewModel.addTags()
+                    justAdded = "tags"
+                }
+            }
+            AddChip("Custom field", Modifier.testTag("add-custom-field"), viewModel::addCustomField)
+        }
+        Spacer(Modifier.height(20.dp))
     }
 
     if (confirmDiscard) {
@@ -449,5 +595,35 @@ private fun GeneratorSheet(onDismiss: () -> Unit, onUse: (String) -> Unit, viewM
             QuietButton("Cancel", onDismiss)
             Spacer(Modifier.height(8.dp))
         }
+    }
+}
+
+/** Suggestions stay on offer while the field is empty or holds one of them, and step aside once something else is typed. */
+private fun List<String>.offeredFor(value: String): Boolean =
+    isNotEmpty() && (value.isBlank() || any { it.equals(value.trim(), ignoreCase = true) })
+
+private fun clipboardText(context: Context): String? = runCatching {
+    context.getSystemService(ClipboardManager::class.java).primaryClip
+        ?.takeIf { it.itemCount > 0 }
+        ?.getItemAt(0)
+        ?.coerceToText(context)
+        ?.toString()
+}.getOrNull()
+
+/** A small "+ Something" pill that adds an optional part to the form. */
+@Composable
+private fun AddChip(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val palette = VaultTheme.palette
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(palette.card)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Add, contentDescription = "Add", tint = palette.accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.titleSmall, color = palette.accent, maxLines = 1)
     }
 }
