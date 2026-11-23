@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyVault | Kiran B Chitari</title>
+    <meta name="description" content="MyVault is an offline, encrypted Android vault for passwords, cards, bank details and documents, by Kiran B Chitari.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        (function () {
+            try {
+                const savedTheme = localStorage.getItem('theme');
+                const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+                if (savedTheme === 'light' || (!savedTheme && prefersLight)) {
+                    document.documentElement.classList.add('theme-loading-light');
+                }
+            } catch (e) { /* storage unavailable */ }
+        })();
+    </script>
+    <!-- Shared portfolio design, served from kiranbchitari.github.io -->
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="myvault-page.css">
+    <noscript><style>.reveal, .reveal-delay { opacity: 1; transform: none; }</style></noscript>
+</head>
+<body>
+    <script>
+        if (document.documentElement.classList.contains('theme-loading-light')) {
+            document.body.classList.add('light-mode');
+            document.documentElement.classList.remove('theme-loading-light');
+        }
+    </script>
+
+    <nav class="navbar" id="navbar">
+        <div class="nav-content">
+            <a href="/" class="logo">github.com/<span>kiranbchitari</span></a>
+            <ul class="nav-links">
+                <li><a href="/#about" class="nav-link">About</a></li>
+                <li><a href="/#skills" class="nav-link">Skills</a></li>
+                <li><a href="/#ai" class="nav-link">AI</a></li>
+                <li><a href="/#experience" class="nav-link">Experience</a></li>
+                <li><a href="/#projects" class="nav-link">Projects</a></li>
+                <li><a href="/#labs" class="nav-link">Labs</a></li>
+                <li class="dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">Privacy
+                        <svg class="dropdown-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a href="/privacy/kannada-abhyasa.html" class="nav-link">Kannada Abhyasa</a></li>
+                        <li><a href="/privacy/listiq.html" class="nav-link">Listiq</a></li>
+                        <li><a href="/MyVault/privacy.html" class="nav-link">MyVault</a></li>
+                        <li><a href="/Travelogue/privacy.html" class="nav-link">Travelogue</a></li>
+                    </ul>
+                </li>
+                <li><a href="/#contact" class="nav-link">Contact</a></li>
+            </ul>
+            <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light mode" aria-pressed="false">
+                <svg class="theme-icon sun-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <path d="M12 2v2"></path>
+                    <path d="M12 20v2"></path>
+                    <path d="m4.93 4.93 1.41 1.41"></path>
+                    <path d="m17.66 17.66 1.41 1.41"></path>
+                    <path d="M2 12h2"></path>
+                    <path d="M20 12h2"></path>
+                    <path d="m6.34 17.66-1.41 1.41"></path>
+                    <path d="m19.07 4.93-1.41 1.41"></path>
+                </svg>
+                <svg class="theme-icon moon-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3a6 6 0 0 0 9 7.5A9 9 0 1 1 12 3Z"></path>
+                </svg>
+            </button>
+            <button class="mobile-menu-btn" id="mobile-menu-btn" type="button" aria-label="Open menu" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <main>
+        <section class="hero app-hero section">
+            <div class="hero-content reveal">
+                <p class="greeting">Android app</p>
+                <h1 class="name">MyVault</h1>
+                <p class="tagline">An offline, encrypted vault for your passwords, cards and documents.</p>
+                <p class="intro-description">
+                    Keep passwords, PINs, bank details, cards, Wi-Fi networks, identity documents and notes in one place. Everything is encrypted on your phone, with no account and no servers.
+                </p>
+                <div class="hero-cta">
+                    <a href="#features" class="btn btn-primary">See Features</a>
+                    <a href="privacy.html" class="btn btn-secondary">Privacy Policy</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="features" class="section">
+            <div class="section-header reveal">
+                <span class="eyebrow">Features</span>
+                <h2>Your secrets, locked on your phone.</h2>
+            </div>
+
+            <div class="feature-grid">
+                <div class="feature-card glass-card reveal">
+                    <span class="feature-icon" aria-hidden="true">🔐</span>
+                    <h3>Encrypted vault</h3>
+                    <p>Everything is encrypted on your phone with AES-256-GCM, unlocked by your master passphrase.</p>
+                </div>
+                <div class="feature-card glass-card reveal">
+                    <span class="feature-icon" aria-hidden="true">👆</span>
+                    <h3>Biometric unlock</h3>
+                    <p>Optional fingerprint unlock, plus auto-lock when you leave the app or the screen turns off.</p>
+                </div>
+                <div class="feature-card glass-card reveal">
+                    <span class="feature-icon" aria-hidden="true">🗂️</span>
+                    <h3>Ten record types</h3>
+                    <p>Passwords, PINs, bank accounts, cards, Wi-Fi, identity documents, developer secrets and notes.</p>
+                </div>
+                <div class="feature-card glass-card reveal">
+                    <span class="feature-icon" aria-hidden="true">🔎</span>
+                    <h3>Private search</h3>
+                    <p>Search titles, tags and notes in memory. Secret values are never searched or indexed.</p>
+                </div>
+                <div class="feature-card glass-card reveal">
+                    <span class="feature-icon" aria-hidden="true">🎲</span>
+                    <h3>Password generator</h3>
+                    <p>Strong random passwords with the length and character types you choose.</p>
+                </div>
+                <div class="feature-card glass-card reveal">
+                    <span class="feature-icon" aria-hidden="true">☁️</span>
+                    <h3>Encrypted backups</h3>
+                    <p>Save encrypted .vault backups anywhere, or to your own Google Drive.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="privacy" class="section">
+            <div class="contact-card glass-card reveal">
+                <span class="eyebrow">Privacy</span>
+                <h2>Only you hold the key.</h2>
+                <p>No account, no ads, no analytics and no servers. Optional Google Drive backup uploads only encrypted files to a <em>MyVault Backups</em> folder in your own Drive.</p>
+                <div class="promo-actions">
+                    <a href="privacy.html" class="btn btn-primary">Read the Privacy Policy</a>
+                    <a href="https://github.com/kiranbchitari/MyVault" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Source on GitHub</a>
+                </div>
+                <div class="social-links">
+                    <a href="mailto:kiranbchitari@gmail.com" class="social-item">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24" aria-hidden="true"><path d="M0 3v18h24v-18h-24zm21.518 2l-9.518 7.713-9.518-7.713h19.036zm-19.518 14v-11.817l10 8.104 10-8.104v11.817h-20z"/></svg>
+                        <span>kiranbchitari@gmail.com</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <p>&copy; 2026 Kiran B Chitari. Built with HTML, CSS &amp; JS.</p>
+        </div>
+    </footer>
+
+    <script src="/script.js"></script>
+</body>
+</html>
